@@ -83,4 +83,11 @@ record the negative result honestly rather than stretch the claim.
 
 ## 8. Evidence ledger (append-only)
 
-TBD — every claim added here must link to a file under `benchmarks/` and a passing test.
+- **2026-09-02 — gpucheck shipped.** Sub-claim 4 now has an implementation and
+  tests: `src/gpucheck.py` labels GPU-warranted / CPU-suffices / insufficient-data
+  from CPU-only inputs, per the design in section 4, and refuses to guess when
+  data is missing (honesty invariant, tested). Evidence: `tests/test_gpucheck.py`
+  (9 tests), README, PROGRESS. The decision **rule** is shipped; the *boundary's
+  empirical validation* across more model/hardware combos is the open next step.
+
+Every claim added here must link to a file under `benchmarks/` and a passing test.

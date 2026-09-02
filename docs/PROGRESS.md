@@ -223,6 +223,28 @@ The overall verdict is REAL / MARGINAL / FALSE; a REAL claim needs a real,
 repeatable speedup AND a robust metric. Serves `scripts/bench.py --trustcheck`
 (values passed in, or `--collect-repeats N` to measure the noise band live).
 
+## gpucheck (GPU-necessity decision rule) — added
+
+Added `src/gpucheck.py` + `scripts/bench.py --gpucheck`. This is the concrete
+form of the frozen thesis in `docs/RESEARCH-SPEC.md` (Amendment A): estimate,
+from CPU-only measurement, whether renting a GPU would actually beat the
+best-scheduled CPU config.
+
+- Regime classifier: `overhead-bound` (measured overhead fraction >= 0.7),
+  `weight-bound` (model footprint vs. CPU memory bandwidth across decode),
+  or `unknown`.
+- Verdicts: **GPU-warranted / CPU-suffices / insufficient-data**, each with an
+  auditable `reason` listing the exact inputs and assumptions.
+- Honesty invariant: returns `insufficient-data` rather than guessing when
+  required inputs (cpu_label, latency target, or enough signal) are missing —
+  it never sells a GPU spend it can't defend.
+- CLI: `--gpucheck --num-params <p> --overhead-fraction <f> --latency-target-ms <l>
+  --decode-ms-per-tok <m> [--batch-size-gb <b>]`; no model download needed.
+
+9 new tests (55 total) covering overhead-bound->CPU-suffices, tight-batch+latency
+flip->GPU-warranted, weight-bound->GPU-warranted, and the refusal-to-guess cases
+(missing cpu_label / latency).
+
 ## Phase 1 status
 All five milestones DONE. The auto-optimizer is a runnable, evidence-producing,
 **unit-tested** tool: `scripts/run_all.py --model <m>` -> bottleneck + decode +

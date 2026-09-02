@@ -55,12 +55,25 @@ def main() -> None:
                     help="for --trustcheck: re-run fp32-vs-int8 N times and collect paired samples")
     ap.add_argument("--config-key", default=None,
                     help="for --trustcheck: a knob to verify is actually read by the code")
+    ap.add_argument("--gpucheck", action="store_true",
+                    help="estimate if GPU spend is warranted from CPU-only measurements")
+    ap.add_argument("--num-params", type=float, default=None,
+                    help="for --gpucheck: model parameter count (e.g. 0.5e9)")
+    ap.add_argument("--latency-target-ms", type=float, default=None,
+                    help="for --gpucheck: required per-token latency (ms)")
+    ap.add_argument("--overhead-fraction", type=float, default=None,
+                    help="for --gpucheck: measured overhead fraction of wall time (0..1)")
+    ap.add_argument("--batch-size-gb", type=int, default=1,
+                    help="for --gpucheck: concurrent batch size (default 1)")
+    ap.add_argument("--decode-ms-per-tok", type=float, default=None,
+                    help="for --gpucheck: measured per-token decode latency in ms")
     ap.add_argument("--out", default=None, help="output JSON path under benchmarks/")
     args = ap.parse_args()
 
-    # A pure-stats trustcheck (passed-in samples) needs no model download.
+    # A pure-stats trustcheck (passed-in samples) or a gpucheck decision needs no
+    # model download.
     need_model = not (args.trustcheck and args.controls and args.treatments
-                      and not args.collect_repeats)
+                      and not args.collect_repeats) and not args.gpucheck
     model = None
     tok = None
     if need_model:
@@ -80,7 +93,24 @@ def main() -> None:
         base["input_shape"] = list(ids.shape)
 
     t0 = time.time()
-    if args.trustcheck:
+    if args.gpucheck:
+        from gpucheck import decide
+        print("== gpucheck: is GPU spend actually warranted? ==")
+        v = decide(
+            overhead_fraction=args.overhead_fraction,
+            num_params=args.num_params,
+            batch_size=args.batch_size_gb,
+            latency_target_ms=args.latency_target_ms,
+            decode_ms_per_tok=args.decode_ms_per_tok,
+            cpu_label="2019 MacBook Pro i7-9750H",
+        )
+        print(f"VERDICT: {v.verdict}  (regime: {v.regime}, score: {v.score:.2f})")
+        print(f"  reason: {v.reason}")
+        record = {**base, "phase": "gpucheck",
+                  "verdict": v.verdict, "regime": v.regime, "score": v.score,
+                  "reason": v.reason, "gpucheck_inputs": v.inputs}
+        save(record, args, tags="gpucheck_")
+    elif args.trustcheck:
         from trustcheck import audit, summarize_trust
         print("== trustcheck: is that 'win' real? ==")
         controls = args.controls

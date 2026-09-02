@@ -1,7 +1,7 @@
 <p align="center">
   <br/>
   <img src="https://img.shields.io/badge/status-Phase%201%20(CPU)-informational" alt="Phase 1 CPU"/>
-  <img src="https://img.shields.io/badge/tests-46%20passing-brightgreen" alt="tests"/>
+  <img src="https://img.shields.io/badge/tests-55%20passing-brightgreen" alt="tests"/>
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="license"/>
   <img src="https://img.shields.io/badge/python-3.10%2F3.11%2F3.12-blue" alt="python"/>
 </p>
@@ -58,6 +58,7 @@ python scripts/bench.py --model <m> --decode      # decode / per-token latency
 python scripts/bench.py --model <m> --quant       # auto-quantization verdict
 python scripts/bench.py --model <m> --batch       # latency vs throughput sweep
 python scripts/bench.py --model <m> --trustcheck  # is that win real? (see below)
+python scripts/bench.py --model <m> --gpucheck    # do you even need a GPU? (see below)
 ```
 
 ## What it caught on my machine
@@ -76,7 +77,7 @@ The full measured records are in `benchmarks/` (JSON + markdown), published as m
 
 ## How it works
 
-Five small modules, one job each:
+Six small modules, one job each:
 
 | Module | Job |
 |---|---|
@@ -84,10 +85,27 @@ Five small modules, one job each:
 | `src/quantize.py` | Auto-quantization (INT8 dynamic). Measures fp32 vs INT8 averaged over repeats, with a **robust quality metric** (per-token logit cosine + top-5 overlap) — not brittle greedy-token identity. |
 | `src/batcher.py` | Latency-vs-throughput sweep over batch size, with a best-batch picker. |
 | `src/trustcheck.py` | **Is that 'win' worth trusting?** Audits any before/after benchmark for the three ways it lies: single-run noise, a brittle/wrong metric, and a "validated, documented, read by nothing" knob. Returns a REAL / MARGINAL / FALSE verdict. |
+| `src/gpucheck.py` | **Do you even need a GPU?** Estimates, from CPU-only measurements, whether GPU spend would actually beat the best-scheduled CPU config. Returns GPU-warranted / CPU-suffices / insufficient-data — and refuses to guess when it can't tell. |
 | `src/auto_optimizer.py` | Orchestrator: runs all four, emits a combined proof report + JSON. |
 | `scripts/` | `run_all.py` (one command) + `bench.py` (per stage). |
 
 A key design decision: `run_all.py` **always persists** a canonical report, so the evidence on disk always matches the latest run — it can't go stale.
+
+## gpucheck — the part that stops you overspending on hardware
+
+The whole project is built around one falsifiable claim (in
+[`docs/RESEARCH-SPEC.md`](docs/RESEARCH-SPEC.md)): **for overhead-bound small models on CPU, you
+usually don't need a GPU at all.** `gpucheck` puts that to the test from local CPU measurement:
+
+```bash
+python scripts/bench.py --model <m> \
+  --gpucheck --num-params 0.5e9 --overhead-fraction 0.98 --latency-target-ms 2000
+```
+
+It labels the decision — **GPU-warranted / CPU-suffices / insufficient-data** — with the exact inputs
+and reasoning, and it **refuses to guess** (returns `insufficient-data`) whenever it genuinely cannot
+tell from the data you gave it. That refusal is a feature: it never sells you a GPU rental it can't
+defend.
 
 ## trustcheck — the part that tells you your benchmark lied
 
@@ -108,18 +126,19 @@ python scripts/bench.py --model <m> --trustcheck \
 
 ```bash
 pip install pytest
-python -m pytest        # 46 fast tests, no model downloads
+python -m pytest        # 55 fast tests, no model downloads
 ```
 
-The suite guards the things that would sink a tool like this: profiler categorisation & no-double-counting, the robust INT8 quality metric + the honest decision rule, batcher best-batch selection, the `trustcheck` noise/brittle-metric/read-by-nothing logic, and a **regression test that the report always emits the new metrics — never a stale one.**
+The suite guards the things that would sink a tool like this: profiler categorisation & no-double-counting, the robust INT8 quality metric + the honest decision rule, batcher best-batch selection, the `trustcheck` noise/brittle-metric/read-by-nothing logic, the `gpucheck` GPU-necessity decision rule (including its refusal to guess when data is missing), and a **regression test that the report always emits the new metrics — never a stale one.**
 
 ## Roadmap (honest)
 
 Phase 1 is complete and CPU-only — no GPU needed. Shipped so far: bottleneck/decode/quant/batch
-selection **and** `trustcheck` (the false-win catcher). What's next, in order of
-value:
+selection, **`trustcheck`** (the false-win catcher) **and** `gpucheck` (the "do you even need a GPU?"
+decision rule). What's next, in order of value:
 
-- [ ] **"Do I even need a GPU?"** — honest CPU-vs-GPU cost/speed decision, so you never spend on a GPU that a CPU win already covers
+- [x] **"Do I even need a GPU?"** — shipping as `gpucheck`; a CPU-only decision (GPU-warranted / CPU-suffices / insufficient-data), fed by real `--decode` measurements and reached via `--decode-ms-per-tok`
+- [ ] **Validate the gpucheck boundary** on more model/hardware/input combinations
 - [ ] **FP4 / INT4 quantization** — beyond INT8 (torch.ao)
 - [ ] **Latency percentiles (p50/p99)** — not just averages
 - [ ] **Memory / KV-cache footprint** measurement
