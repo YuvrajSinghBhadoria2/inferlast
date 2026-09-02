@@ -189,9 +189,10 @@ you want throughput and can tolerate latency.
 
 ## Quality: unit tests (added) and a real bug they caught
 
-Added `tests/` (pytest, `pytest` to run; 33 tests) covering the profiler's
+Added `tests/` (pytest, `pytest` to run; 46 tests) covering the profiler's
 categorisation/timing, the robust quality metric + honest decision rule, the
-batcher's best-batch selection, and a regression guard that the orchestrator
+batcher's best-batch selection, the `trustcheck` noise/brittle/read-by-nothing
+logic, and a regression guard that the orchestrator
 report always emits the NEW metrics and never the old brittle `output_match_pct`.
 
 The tests surfaced one real latent bug in the original profiler: the attention
@@ -201,6 +202,26 @@ double-count that inflated the reported attention %. Fixed in `src/profiler.py`
 (the container is now non-leaf; projections remain timed leaves). Category splits
 were re-measured after the fix; the headline finding (MLP+attention dominate and
 the model is overhead-bound on CPU) is unchanged.
+
+## trustcheck (false-win catcher) — added
+
+Added `src/trustcheck.py` + `scripts/bench.py --trustcheck`. It audits whether a
+measured "win" can be trusted, catching the three ways a benchmark lies:
+
+1. **Single-run noise** — a matched-pairs 95% CI on the speedup; a CI straddling
+   1.0x is MARGINAL, [lo > real_floor] is REAL, [hi < 1.0] is FALSE. Demonstrated
+   on this repo's own evidence: the same INT8-vs-fp32 config measured 3.0x faster
+   in one session and 0.65x slower in another -> trustcheck says FALSE/noise.
+2. **Brittle / wrong metric** — a greedy-token-level (or opaque-accuracy) quality
+   comparison with no logits is flagged "can lie"; given logits it re-measures
+   with logit cosine + top-5 overlap.
+3. **Read-by-nothing knob** — a documented/validated config key that no code path
+   reads (the Soup/vLLM "validated, documented, read by nothing" bug class) is
+   flagged by a static AST pass.
+
+The overall verdict is REAL / MARGINAL / FALSE; a REAL claim needs a real,
+repeatable speedup AND a robust metric. Serves `scripts/bench.py --trustcheck`
+(values passed in, or `--collect-repeats N` to measure the noise band live).
 
 ## Phase 1 status
 All five milestones DONE. The auto-optimizer is a runnable, evidence-producing,

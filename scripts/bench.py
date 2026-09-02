@@ -45,25 +45,70 @@ def main() -> None:
                     help="run auto-batching latency/throughput sweep (Milestone 4)")
     ap.add_argument("--n-new", type=int, default=16,
                     help="new tokens generated per decode repeat")
+    ap.add_argument("--trustcheck", action="store_true",
+                    help="audit whether a measured win is trustworthy (noise/brittle-metric/unread-knob)")
+    ap.add_argument("--controls", type=float, nargs="*", default=None,
+                    help="repeated 'before' samples (e.g. ms/token) for trustcheck")
+    ap.add_argument("--treatments", type=float, nargs="*", default=None,
+                    help="repeated 'after' samples (e.g. ms/token) for trustcheck")
+    ap.add_argument("--collect-repeats", type=int, default=0,
+                    help="for --trustcheck: re-run fp32-vs-int8 N times and collect paired samples")
+    ap.add_argument("--config-key", default=None,
+                    help="for --trustcheck: a knob to verify is actually read by the code")
     ap.add_argument("--out", default=None, help="output JSON path under benchmarks/")
     args = ap.parse_args()
 
-    tok = AutoTokenizer.from_pretrained(args.model)
-    model = AutoModelForCausalLM.from_pretrained(args.model)
-    model.eval()
-    ids = tok([args.prompt], return_tensors="pt")["input_ids"]
+    # A pure-stats trustcheck (passed-in samples) needs no model download.
+    need_model = not (args.trustcheck and args.controls and args.treatments
+                      and not args.collect_repeats)
+    model = None
+    tok = None
+    if need_model:
+        tok = AutoTokenizer.from_pretrained(args.model)
+        model = AutoModelForCausalLM.from_pretrained(args.model)
+        model.eval()
+    ids = None if model is None else tok([args.prompt], return_tensors="pt")["input_ids"]
 
     base = {
         "model": args.model,
         "prompt": args.prompt,
-        "input_shape": list(ids.shape),
         "device": "cpu",
         "hardware": "2019 MacBook Pro 16in i7-9750H CPU-only 16GB",
         "run_repeats": args.repeats,
     }
+    if ids is not None:
+        base["input_shape"] = list(ids.shape)
 
     t0 = time.time()
-    if args.quant:
+    if args.trustcheck:
+        from trustcheck import audit, summarize_trust
+        print("== trustcheck: is that 'win' real? ==")
+        controls = args.controls
+        treatments = args.treatments
+        # If asked to, collect paired fp32-vs-int8 samples ourselves.
+        if args.collect_repeats:
+            from quantize import quantize_model_int8, _collect_logits
+            m_q = quantize_model_int8(model)
+            c, t = [], []
+            for _ in range(args.collect_repeats):
+                fp_mpt, fp_logits, _ = _collect_logits(model, tok, args.prompt, args.n_new)
+                iq_mpt, iq_logits, _ = _collect_logits(m_q, tok, args.prompt, args.n_new)
+                c.append(fp_mpt); t.append(iq_mpt)
+            controls, treatments = c, t
+        if controls is None or treatments is None:
+            print("need --controls and --treatments (or --collect-repeats N)")
+            sys.exit(2)
+        src = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        v = audit(controls, treatments, source_root=src,
+                  metric_name="token match", comparison_level="token",
+                  config_key=args.config_key)
+        print(summarize_trust(v))
+        record = {**base, "phase": "trustcheck",
+                  "controls": controls, "treatments": treatments,
+                  "verdict": v.verdict, "speed_verdict": v.speed_verdict,
+                  "metric_brittle": v.metric_brittle, "reason": v.reason}
+        save(record, args, tags="trust_")
+    elif args.quant:
         from quantize import auto_quantize, summarize_verdict
         print("== auto-quantization BEFORE/AFTER ==")
         v = auto_quantize(model, tok, prompt=args.prompt, n_new=args.n_new)
