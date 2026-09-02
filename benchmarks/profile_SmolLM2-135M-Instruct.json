@@ -1,0 +1,43 @@
+{
+  "model": "HuggingFaceTB/SmolLM2-135M-Instruct",
+  "prompt": "The capital of France is the city of",
+  "input_shape": [
+    1,
+    8
+  ],
+  "device": "cpu",
+  "hardware": "2019 MacBook Pro 16in i7-9750H CPU-only 16GB",
+  "run_repeats": 3,
+  "total_time_s": 0.7803835410159081,
+  "tokens": 24,
+  "throughput_tok_per_s": 30.754108382086905,
+  "leaf_time_sum_s": 0.04042224015574902,
+  "cat_times_s": {
+    "embed": 0.0001618380192667246,
+    "attention": 0.016865908284671605,
+    "mlp": 0.017543014779221267,
+    "norm": 0.005623746081255376,
+    "lm_head": 0.0002277329913340509
+  },
+  "cat_calls": {
+    "embed": 1,
+    "attention": 150,
+    "mlp": 150,
+    "norm": 61,
+    "lm_head": 1
+  },
+  "cat_params": {
+    "embed": 28311552,
+    "attention": 26542080,
+    "mlp": 79626240,
+    "norm": 35136,
+    "lm_head": 28311552
+  },
+  "pct_of_leaf_sum": {
+    "embed": 0.4,
+    "attention": 41.7,
+    "mlp": 43.4,
+    "norm": 13.9,
+    "lm_head": 0.6
+  }
+}

@@ -1,0 +1,17 @@
+# Virtual env / packages
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+
+# Build / tooling
+dist/
+build/
+
+# OS
+.DS_Store
+
+# Local model caches (large)
+.cache/huggingface/

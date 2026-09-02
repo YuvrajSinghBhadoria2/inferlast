@@ -1,0 +1,77 @@
+{
+  "prompt": "The capital of France is the city of",
+  "hardware": "CPU (2019 MacBook Pro 16in i7-9750H, 16GB)",
+  "model_untouched": true,
+  "prefill": {
+    "wall_total_s": 3.6837216329877265,
+    "tokens": 16,
+    "tok_per_s": 4.3434335148237055,
+    "leaf_time_s": 0.041875380906276405,
+    "pct_of_leaf": {
+      "embed": 0.2,
+      "attention": 41.3,
+      "mlp": 47.0,
+      "norm": 10.8,
+      "lm_head": 0.6
+    },
+    "overhead_fraction": 0.989
+  },
+  "decode": {
+    "ms_per_token": 1220.1662448351271,
+    "tok_per_s": 0.8195604527111986,
+    "overhead_fraction": 0.99
+  },
+  "quantization": {
+    "fp32_ms_per_token": 1306.0625328911958,
+    "int8_ms_per_token": 873.247928193046,
+    "speedup_int8_over_fp32": 1.496,
+    "speedup_worst_repeat": 1.227,
+    "logit_cosine": 0.681,
+    "top5_overlap": 0.15,
+    "recommended_int8": false,
+    "reason": "int8 degrades quality too much: logit-cos 0.68, top5 0.15 (need >= 0.65/0.6). Do NOT quantize."
+  },
+  "batching": {
+    "goal": "throughput",
+    "rows": [
+      {
+        "batch": 1,
+        "wall_ms": 768.6819540103897,
+        "tok_per_s": 10.407425279417799,
+        "ms_per_req": 768.6819540103897,
+        "tok_per_s_per_req": 10.407425279417799
+      },
+      {
+        "batch": 2,
+        "wall_ms": 986.1600279691629,
+        "tok_per_s": 16.224547280576168,
+        "ms_per_req": 986.1600279691629,
+        "tok_per_s_per_req": 8.112273640288084
+      },
+      {
+        "batch": 4,
+        "wall_ms": 909.249151009135,
+        "tok_per_s": 35.193873939265856,
+        "ms_per_req": 909.249151009135,
+        "tok_per_s_per_req": 8.798468484816464
+      },
+      {
+        "batch": 8,
+        "wall_ms": 2851.1866190237924,
+        "tok_per_s": 22.446794458481545,
+        "ms_per_req": 2851.1866190237924,
+        "tok_per_s_per_req": 2.805849307310193
+      },
+      {
+        "batch": 16,
+        "wall_ms": 2677.986040012911,
+        "tok_per_s": 47.79711248957179,
+        "ms_per_req": 2677.986040012911,
+        "tok_per_s_per_req": 2.9873195305982367
+      }
+    ],
+    "best_batch": 16,
+    "best_tok_per_s": 47.79711248957179
+  },
+  "elapsed_s": 210.5
+}

@@ -1,0 +1,51 @@
+{
+  "model": "HuggingFaceTB/SmolLM2-135M-Instruct",
+  "prompt": "The capital of France is the city of",
+  "input_shape": [
+    1,
+    8
+  ],
+  "device": "cpu",
+  "hardware": "2019 MacBook Pro 16in i7-9750H CPU-only 16GB",
+  "run_repeats": 3,
+  "phase": "batch_sweep",
+  "rows": [
+    {
+      "batch": 1,
+      "wall_ms": 566.6167079471052,
+      "tok_per_s": 14.118891814864762,
+      "ms_per_req": 566.6167079471052,
+      "tok_per_s_per_req": 14.118891814864762
+    },
+    {
+      "batch": 2,
+      "wall_ms": 672.5729239988141,
+      "tok_per_s": 23.78924192319733,
+      "ms_per_req": 672.5729239988141,
+      "tok_per_s_per_req": 11.894620961598665
+    },
+    {
+      "batch": 4,
+      "wall_ms": 964.4087590277195,
+      "tok_per_s": 33.180951230950235,
+      "ms_per_req": 964.4087590277195,
+      "tok_per_s_per_req": 8.295237807737559
+    },
+    {
+      "batch": 8,
+      "wall_ms": 1958.2106600282714,
+      "tok_per_s": 32.68289837574268,
+      "ms_per_req": 1958.2106600282714,
+      "tok_per_s_per_req": 4.085362296967835
+    },
+    {
+      "batch": 16,
+      "wall_ms": 2663.8717019814067,
+      "tok_per_s": 48.050362149495676,
+      "ms_per_req": 2663.8717019814067,
+      "tok_per_s_per_req": 3.0031476343434798
+    }
+  ],
+  "best_batch": 16,
+  "best_tok_per_s": 48.050362149495676
+}

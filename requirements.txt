@@ -1,0 +1,11 @@
+# Core runtime (CPU)
+torch>=2.2,<2.5
+transformers>=4.40,<4.47
+numpy>=1.26,<2
+
+# Tests
+pytest
+
+# NOTE: this is the validated set used to produce the benchmarks/ evidence on a
+# CPU-only Intel MacBook. torch>=2.5 and transformers>=4.47 were NOT validated;
+# see README (Phase-1 CPU-only scope).

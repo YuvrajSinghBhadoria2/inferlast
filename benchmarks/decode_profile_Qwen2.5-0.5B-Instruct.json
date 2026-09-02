@@ -1,0 +1,46 @@
+{
+  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+  "prompt": "The capital of France is the city of",
+  "input_shape": [
+    1,
+    8
+  ],
+  "device": "cpu",
+  "hardware": "2019 MacBook Pro 16in i7-9750H CPU-only 16GB",
+  "run_repeats": 1,
+  "phase": "decode",
+  "n_new_tokens": 10,
+  "total_time_s": 5.966801917995326,
+  "tokens": 10,
+  "throughput_tok_per_s": 1.6759396637319095,
+  "ms_per_token": 596.6801917995326,
+  "leaf_time_sum_s": 0.11309057811740786,
+  "cat_times_s": {
+    "embed": 0.00032087310682982206,
+    "norm": 0.013504947884939611,
+    "attention": 0.04242572851944715,
+    "mlp": 0.056266241532284766,
+    "lm_head": 0.0005727870739065111
+  },
+  "cat_calls": {
+    "embed": 10,
+    "norm": 490,
+    "attention": 1200,
+    "mlp": 1200,
+    "lm_head": 10
+  },
+  "cat_params": {
+    "embed": 136134656,
+    "attention": 44067840,
+    "mlp": 313786368,
+    "norm": 43904,
+    "lm_head": 136134656
+  },
+  "pct_of_leaf_sum": {
+    "embed": 0.3,
+    "norm": 11.9,
+    "attention": 37.5,
+    "mlp": 49.8,
+    "lm_head": 0.5
+  }
+}

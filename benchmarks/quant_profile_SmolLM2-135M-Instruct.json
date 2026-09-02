@@ -1,0 +1,24 @@
+{
+  "model": "HuggingFaceTB/SmolLM2-135M-Instruct",
+  "prompt": "The capital of France is the city of",
+  "input_shape": [
+    1,
+    8
+  ],
+  "device": "cpu",
+  "hardware": "2019 MacBook Pro 16in i7-9750H CPU-only 16GB",
+  "run_repeats": 3,
+  "phase": "quantize_int8_vs_fp32",
+  "n_new_tokens": 10,
+  "before_ms_per_token": 529.8375166991415,
+  "before_tok_per_s": 1.8873710684549951,
+  "after_ms_per_token": 540.9338090006107,
+  "after_tok_per_s": 1.8486550172331178,
+  "speedup_after_over_before": 0.9794867835642037,
+  "speedup_worst_repeat": 0.8480494222074311,
+  "logit_cosine": 0.29284775257110596,
+  "top5_overlap": 0.24,
+  "repeats": 3,
+  "recommended_int8": false,
+  "reason": "int8 degrades quality too much: logit-cos 0.29, top5 0.24 (need >= 0.65/0.6). Do NOT quantize."
+}
