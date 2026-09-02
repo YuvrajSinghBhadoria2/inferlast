@@ -28,6 +28,8 @@ This is the core of what inference engineers actually do: not "apply the standar
 
 > **Hardware scope — Phase 1 is CPU-only.** Built and measured on a 2019 Intel MacBook Pro 16" (i7-9750H, 6C/12T, 16 GB, no GPU). Findings are CPU-specific and stated as such; on GPU the same model is typically weight-bandwidth-bound, not overhead-bound, so results would differ.
 
+The project is organized around one falsifiable claim — **a decision rule for when GPU spend is actually warranted, estimable from CPU-only measurement.** That thesis, its boundaries, and its frozen success test live in [`docs/RESEARCH-SPEC.md`](docs/RESEARCH-SPEC.md).
+
 ## The honest insight it encodes
 
 For tiny models on CPU, inferlast measures that **~98–99% of decode wall time is framework overhead, not model math**. So **blindly quantizing the weights will not speed up an overhead-bound model** — and inferlast *measures* that rather than pretending otherwise. That refusal-to-guess behavior is the whole point.
