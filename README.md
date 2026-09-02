@@ -7,7 +7,7 @@
 </p>
 
 <h1 align="center">inferlast</h1>
-<p align="center"><b>The last inference optimization you'll guess at.</b><br/>
+<p align="center"><b>No GPU required.</b> Prove a real win on your CPU <i>before</i> you ever pay to rent one.<br/>
 Profile where your model's time <i>actually</i> goes, let it pick the optimization — then <b>prove</b> the win with a before/after benchmark it refuses to fake.</p>
 
 <p align="center">
@@ -18,13 +18,13 @@ Profile where your model's time <i>actually</i> goes, let it pick the optimizati
 
 ## Why
 
-Most LLM-inference guides tell you what to do: *quantize to INT8, batch bigger, grab a GPU.* They don't tell you **whether it helps *your* model on *your* hardware.**
+Most LLM-inference guides tell you what to do: *quantize to INT8, batch bigger, grab a GPU.* They don't tell you **whether it helps *your* model on *your* hardware** — and they quietly assume you can rent a GPU to find out.
 
-inferlast is the opposite. It starts from a measurement, not a recipe:
+inferlast is the opposite. It is **CPU-first by design**: it profiles and optimizes entirely on the CPU you already have, so **anyone can run it — no GPU, no cloud GPU bill, no CUDA install.** And when you *do* move to a GPU later, inferlast tells you honestly whether it was even worth it.
 
 > **Profile → pick → apply → prove.** And if the measurement says an "obvious" optimization doesn't help, inferlast says so — instead of making you guess wrong.
 
-This is the core of what inference engineers actually do: not "apply the standard thing," but **find where the time really goes and only ship changes that provably pay off.**
+This is the core of what inference engineers actually do: not "apply the standard thing," but **find where the time really goes and only ship changes that provably pay off** — cheaply enough that you don't need a GPU to do it.
 
 > **Hardware scope — Phase 1 is CPU-only.** Built and measured on a 2019 Intel MacBook Pro 16" (i7-9750H, 6C/12T, 16 GB, no GPU). Findings are CPU-specific and stated as such; on GPU the same model is typically weight-bandwidth-bound, not overhead-bound, so results would differ.
 
@@ -113,20 +113,20 @@ The suite guards the things that would sink a tool like this: profiler categoris
 
 ## Roadmap (honest)
 
-Phase 1 is complete and CPU-only. Shipped so far: bottleneck/decode/quant/batch
+Phase 1 is complete and CPU-only — no GPU needed. Shipped so far: bottleneck/decode/quant/batch
 selection **and** `trustcheck` (the false-win catcher). What's next, in order of
 value:
 
-- [ ] **GPU profiling & target profiles** — measure on CUDA / Apple Silicon where models are compute-bound
+- [ ] **"Do I even need a GPU?"** — honest CPU-vs-GPU cost/speed decision, so you never spend on a GPU that a CPU win already covers
 - [ ] **FP4 / INT4 quantization** — beyond INT8 (torch.ao)
 - [ ] **Latency percentiles (p50/p99)** — not just averages
 - [ ] **Memory / KV-cache footprint** measurement
 - [ ] **Serving-engine integration** (vLLM / llama.cpp) as an enrichment layer
 
-None of these are live claims — they're the plan. PRs welcome.
+Nothing here is a live claim — it's the plan. PRs welcome.
 
 ## License
 
 MIT — free, stays free, built in the open. If inferlast saved you a guessing session, a star helps others find it.
 
-<sub>Not a replacement for vLLM / llama.cpp — a *decision layer* that tells you which setting is right for your model and hardware, with proof.</sub>
+<sub>Not a replacement for vLLM / llama.cpp — a *decision layer* that runs on CPU and tells you which setting is right for your model and hardware, with proof, before you spend on a GPU.</sub>
