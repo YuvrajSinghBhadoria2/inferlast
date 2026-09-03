@@ -4,6 +4,7 @@
   <img src="https://img.shields.io/badge/tests-55%20passing-brightgreen" alt="tests"/>
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="license"/>
   <img src="https://img.shields.io/badge/python-3.10%2F3.11%2F3.12-blue" alt="python"/>
+  <a href="https://github.com/YuvrajSinghBhadoria2/inferlast/releases"><img src="https://img.shields.io/github/v/release/YuvrajSinghBhadoria2/inferlast" alt="release"/></a>
 </p>
 
 <h1 align="center">inferlast</h1>
