@@ -1,7 +1,7 @@
 <p align="center">
   <br/>
   <img src="https://img.shields.io/badge/status-Phase%201%20(CPU)-informational" alt="Phase 1 CPU"/>
-  <img src="https://img.shields.io/badge/tests-57%20passing-brightgreen" alt="tests"/>
+  <img src="https://img.shields.io/badge/tests-91%20passing-brightgreen" alt="tests"/>
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="license"/>
   <a href="https://pypi.org/project/inferlast/"><img src="https://img.shields.io/pypi/v/inferlast" alt="PyPI"/></a>
   <img src="https://img.shields.io/badge/python-3.10%2F3.11%2F3.12-blue" alt="python"/>
@@ -91,6 +91,26 @@ python scripts/bench.py --model <m> --trustcheck  # is that win real? (see below
 python scripts/bench.py --model <m> --gpucheck    # do you even need a GPU? (see below)
 ```
 
+### One-stop: Decide → Deploy
+
+`inferlast run` measures; `inferlast deploy` turns that verdict into a **ready-to-run
+serving config** — the answer to the costly "should I rent a GPU here, and if I stay
+on CPU, what exactly do I run?" decision:
+
+```bash
+inferlast run --model Qwen/Qwen2.5-0.5B-Instruct --out ./verdict   # measure ([MEASURED])
+inferlast deploy --from ./verdict/create.json \
+    --latency-target-ms 1000 --req-per-hr 100 --out ./deploy       # decide + emit config
+```
+
+`deploy` returns **CPU-suffices / GPU-warranted / insufficient-data** (via `gpucheck`),
+then emits an executable server command for the right branch — pure-CPU
+`llama-server` with GGUF Q4_K_M, or `vLLM` for GPU — plus an honest, cited cost-sanity
+rule and a `deploy.json` + `run.sh` artifact. It never overclaims: GPU-warranted means
+"a GPU can *plausibly* win, verify on the GPU," and every config says to re-measure
+tok/s on your target hardware. The design and its sources are in
+[`docs/DECIDE-DEPLOY-SPEC.md`](docs/DECIDE-DEPLOY-SPEC.md).
+
 ## What it caught on my machine
 
 A quiet, annoying truth that most optimization tutorials skip: **on an overhead-bound CPU model, INT8 quantization is not a free win.** inferlast measured it three ways and told the truth:
@@ -107,7 +127,7 @@ The full measured records are in `benchmarks/` (JSON + markdown), published as m
 
 ## How it works
 
-Six small modules, one job each:
+Seven small modules, one job each:
 
 | Module | Job |
 |---|---|
@@ -116,6 +136,7 @@ Six small modules, one job each:
 | `src/batcher.py` | Latency-vs-throughput sweep over batch size, with a best-batch picker. |
 | `src/trustcheck.py` | **Is that 'win' worth trusting?** Audits any before/after benchmark for the three ways it lies: single-run noise, a brittle/wrong metric, and a "validated, documented, read by nothing" knob. Returns a REAL / MARGINAL / FALSE verdict. |
 | `src/gpucheck.py` | **Do you even need a GPU?** Estimates, from CPU-only measurements, whether GPU spend would actually beat the best-scheduled CPU config. Returns GPU-warranted / CPU-suffices / insufficient-data — and refuses to guess when it can't tell. |
+| `src/deploy.py` | **Decide → Deploy.** Turns the measured verdict into a ready-to-run serving config: CPU (`llama-server`, GGUF Q4_K_M, pure CPU `-ngl 0`) or GPU (`vLLM`), plus an honest, cited cost-sanity rule and a `deploy.json` + `run.sh` artifact. One command from measure to deploy. |
 | `src/auto_optimizer.py` | Orchestrator: runs all four, emits a combined proof report + JSON. |
 | `scripts/` | `run_all.py` (one command) + `bench.py` (per stage). |
 

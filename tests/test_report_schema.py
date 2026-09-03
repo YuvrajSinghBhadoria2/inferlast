@@ -42,6 +42,8 @@ def test_report_uses_new_metrics_and_bans_stale_field():
     # all persisted sections present
     for section in ("prefill", "decode", "quantization", "batching", "elapsed_s"):
         assert section in out
+    # model size is recorded so `inferlast deploy` can size the decision
+    assert out.get("num_params", 0) > 0
     # the KV-cache technique slot always exists and reports availability
     assert "techniques" in out
     assert "kv_cache" in out["techniques"]

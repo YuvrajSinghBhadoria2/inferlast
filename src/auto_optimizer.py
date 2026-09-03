@@ -42,10 +42,21 @@ def run_auto_optimizer(
     draft_model=None,
     draft_tok=None,
 ) -> tuple[dict, str]:
+    num_params = getattr(model, "num_parameters", None)
+    if num_params is not None:
+        try:
+            num_params = num_params()
+        except TypeError:
+            num_params = None
+    if num_params is None:
+        num_params = sum(p.numel() for p in model.parameters())
+    if num_params in (0, None):
+        num_params = None
     out: dict = {
         "prompt": prompt,
         "hardware": "CPU (2019 MacBook Pro 16in i7-9750H, 16GB)",
         "model_untouched": True,
+        "num_params": num_params,
     }
 
     # 1 & 2: bottleneck profile (prefill) + overhead fraction
