@@ -20,6 +20,7 @@ from profiler import profile_forward, profile_decode
 from quantize import auto_quantize
 from batcher import bench_batch, best_batch
 from decode import measure_decode
+from speculative import measure_speculative
 
 
 def _overhead_frac(pr) -> float:
@@ -38,6 +39,8 @@ def run_auto_optimizer(
     quant_speedup_floor: float = 1.05,
     quant_quality_floor: float = 0.65,
     quant_top5_floor: float = 0.60,
+    draft_model=None,
+    draft_tok=None,
 ) -> tuple[dict, str]:
     out: dict = {
         "prompt": prompt,
@@ -88,6 +91,18 @@ def run_auto_optimizer(
         }
     except Exception as exc:  # e.g. a model without a compatible cache API
         out["techniques"]["kv_cache"] = {"avail": False, "error": str(exc)}
+
+    # speculative (assisted) decode -- opt-in, needs a second draft model.
+    if draft_model is not None:
+        out["techniques"]["speculative"] = measure_speculative(
+            model, ids, ids.shape[1], draft_model, n_new=n_new,
+            tokenizer=tok, assistant_tokenizer=draft_tok,
+            repeats=2, warmup=1)
+    else:
+        out["techniques"]["speculative"] = {
+            "avail": False,
+            "note": "not measured unless a --draft-model is supplied.",
+        }
 
     # quantization
     qv = auto_quantize(model, tok, prompt=prompt, n_new=n_new,
@@ -170,6 +185,14 @@ def _report(o: dict) -> str:
     else:
         lines.append("KV cache not measurable on this model: "
                      f"{kv.get('error','?')}")
+    sp = t.get("speculative", {})
+    if sp.get("avail") and "error" not in sp:
+        lines += [
+            "## 2c. Speculative (assisted) decoding — measured",
+            f"assisted {sp['assisted_tok_s']} tok/s vs the target alone "
+            f"(KV) {sp['plain_kv_tok_s']} tok/s = {sp['speedup_x']}x -> "
+            f"{sp['verdict']}. {sp.get('note','')}",
+        ]
     lines += [
         "## 3. Quantization (fp32 vs int8, measured BEFORE/AFTER, averaged)",
         f"fp32 {q['fp32_ms_per_token']:.0f} ms/tok -> int8 {q['int8_ms_per_token']:.0f} ms/tok "

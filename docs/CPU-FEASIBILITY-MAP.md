@@ -82,8 +82,12 @@ decision inferlast's `gpucheck` is meant to make from local measurement.
 
 - **Speculative decoding** — the single highest-leverage CPU win `[MEASURED by
   others]`: CPU 3B got ~1.7-2x (e.g. 12.9 -> 22.1 tok/s) with a ~10x-smaller draft.
-  Bandwidth-starved CPUs benefit most. This machine has AVX2 (9th-gen i7); it does
-  NOT have AVX-512 (that needs Ice Lake+), so build `native`/AVX2.
+  Bandwidth-starved CPUs benefit most. **Caveat, measured locally:** on a naive
+  two-HF-model torch-2.2.2 CPU setup this win does NOT appear — SmolLM2-135M drafting
+  Qwen2.5-0.5B measured **0.55x (SLOWER)** here, because both models stream weights
+  through the same bandwidth. The literature win needs an engine where the draft
+  shares the loaded-weight/kernel path (llama.cpp). This machine has AVX2 (9th-gen
+  i7); it does NOT have AVX-512 (that needs Ice Lake+), so build `native`/AVX2.
 - **Lower-bit quants (Q2/Q3/IQ)** to shrink footprint (7B Q2 ≈ 2.7 GB) and raise
   decode speed at some quality cost — a last resort to fit more in RAM.
 - **KV-cache quantization** (q8_0/q4_0 K/V) to cut long-context KV RAM and run a

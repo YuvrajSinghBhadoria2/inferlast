@@ -365,3 +365,27 @@ AQT int4 is explicitly deferred-and-explained (needs torch>=2.3 + torchao, GPU);
 GGUF / speculative / KV-quant are engine-bound; FlashAttention is CUDA-only.
 
 6 new tests (`tests/test_decode.py`) + a schema assertion; **78 total tests passing**.
+
+## Milestone 7 (DONE): speculative (assisted) decode — measured honestly, turns out SLOWER
+
+Added `src/speculative.py` + `inferlast run --draft-model <m>`: measures the
+target model alone vs assisted decode (HF `assistant_model`) and returns a
+FASTER/SLOWER/FLAT verdict with real tok/s. This pre-empts the classic false
+"speculative = free speedup" claim by measuring instead of trusting the
+literature's ~1.7-2x CPU number.
+
+Measured, not claimed (`[MEASURED]`, this i7-9750H):
+- SmolLM2-135M drafting Qwen2.5-0.5B: plain-KV **3.80 tok/s** vs assisted
+  **2.10 tok/s** → **0.55x (SLOWER)**.
+- Why: on bandwidth-bound CPU both the draft and target stream their weights
+  through the same memory bandwidth, and a separate HF draft does not share an
+  optimized kernel path. The literature win is engine/scale-dependent (llama.cpp
+  draft shares loaded weights); it does not transfer to a two-HF-model torch-2.2.2
+  CPU setup.
+
+`run_auto_optimizer` now emits `techniques.speculative` (avail / rates / verdict)
+and the report renders a "2c. Speculative (assisted) decoding" section when a
+draft is supplied; off by default. `docs/CPU-FEASIBILITY-MAP.md` and
+`docs/OPTIMIZATION-TECHNIQUES.md` updated to fold in the measured caveat.
+2 new tests (`tests/test_speculative.py`) + a schema assertion; **80 total tests**.
+

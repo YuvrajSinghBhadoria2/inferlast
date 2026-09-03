@@ -30,8 +30,16 @@ def run(args: argparse.Namespace) -> None:
     tok = AutoTokenizer.from_pretrained(args.model)
     model = AutoModelForCausalLM.from_pretrained(args.model)
     model.eval()
+    draft_model = None
+    draft_tok = None
+    if getattr(args, "draft_model", None):
+        print(f"[inferlast] loading draft {args.draft_model} for speculative decode ...")
+        draft_tok = AutoTokenizer.from_pretrained(args.draft_model)
+        draft_model = AutoModelForCausalLM.from_pretrained(args.draft_model)
+        draft_model.eval()
     _, report = run_auto_optimizer(model, tok, prompt=args.prompt,
-                                   n_new=getattr(args, "n_new", 12))
+                                   n_new=getattr(args, "n_new", 12),
+                                   draft_model=draft_model, draft_tok=draft_tok)
     print(report)
 
 
@@ -67,6 +75,9 @@ def main() -> None:
     cmd = sub.add_parser("run", help="profile -> pick -> prove a real win")
     cmd.add_argument("--model", default="HuggingFaceTB/SmolLM2-135M-Instruct")
     cmd.add_argument("--prompt", default="The capital of France is the city of")
+    cmd.add_argument("--draft-model",
+                     help="optional draft model for speculative (assisted) decode "
+                          "measurement, e.g. HuggingFaceTB/SmolLM2-135M-Instruct")
     cmd.set_defaults(func=run)
 
     cmd = sub.add_parser(

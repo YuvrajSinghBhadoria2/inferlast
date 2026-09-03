@@ -44,3 +44,6 @@ def test_report_uses_new_metrics_and_bans_stale_field():
     assert "techniques" in out
     assert "kv_cache" in out["techniques"]
     assert out["techniques"]["kv_cache"]["avail"] is False  # MiniLM has no cache API
+    # speculative slot always exists; off by default (no draft supplied)
+    assert "speculative" in out["techniques"]
+    assert out["techniques"]["speculative"]["avail"] is False

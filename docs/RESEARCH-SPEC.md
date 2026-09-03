@@ -155,4 +155,20 @@ record the negative result honestly rather than stretch the claim.
   `src/profiler.py`, `src/quantize.py`, `src/auto_optimizer.py`,
   `docs/OPTIMIZATION-TECHNIQUES.md`, `tests/test_decode.py`.
 
+- **2026-09-03 — speculative decode measured honestly; it LOSES on this stack.**
+  The feasibility research had repeated the literature's CPU claim (speculative
+  decode ~1.7-2x); this entry is the repo *measuring its own hardware* instead of
+  trusting it. Added `src/speculative.py` + `inferlast run --draft-model <m>` which
+  returns a FASTER/SLOWER/FLAT verdict from real tok/s. `[MEASURED]`: SmolLM2-135M
+  drafting Qwen2.5-0.5B = **0.55x (SLOWER)** on this i7-9750H — because on
+  bandwidth-bound CPU the draft and target both stream weights through the same
+  bandwidth, and a separate HF draft shares no kernel path. The literature win is
+  engine/scale-dependent (llama.cpp draft reuses loaded weights), so the honest
+  conclusion is: on this torch-2.2.2 CPU stack speculative decode is NOT a win and
+  should not be recommended. This is a genuine negative finding preserved as
+  evidence, and it hardens the "measured-not-claimed" brand. Evidence:
+  `src/speculative.py`, `tests/test_speculative.py`, updated
+  `docs/CPU-FEASIBILITY-MAP.md` + `docs/OPTIMIZATION-TECHNIQUES.md`,
+  `tests/test_report_schema.py` (80 tests).
+
 Every claim added here must link to a file under `benchmarks/` and a passing test.

@@ -17,10 +17,10 @@ which engine can — rather than reporting a fake number.
 | Technique | Gate | Evidence on this stack |
 |---|---|---|
 | KV cache (`use_cache`) | **SHIPPED/MEASURED** | 1.7-2.0x decode `[MEASURED]` |
+| Speculative (assisted) decode | **SHIPPED/MEASURED (measurement)** | **0.55x — SLOWER** `[MEASURED]` |
 | Dynamic batching / batch sweep | **SHIPPED** | est. max-tput batch `[MEASURED]` |
 | int8 dynamic quantization (torch.ao) | **SHIPPED** | before/after measured, gated by quality |
 | GGUF Q4_K_M | **EXTERNAL** (engine) | needs llama.cpp/Ollama torch, not PyTorch |
-| Speculative decoding | **EXTERNAL** (engine) | needs llama.cpp/Medusa; not on torch 2.2.2 |
 | KV-cache quantization (q8_0/q4_0 K/V) | **EXTERNAL** (engine) | needs llama.cpp `--cache-type` |
 | AQT / int4 weight-only (torchao) | **DEFERRED-EXPLAINED** | needs torch≥2.3 + torchao; not installable here |
 | FlashAttention/Attention | **DEFERRED-EXPLAINED** | needs cuDNN/GPU (CUDA-only) |
@@ -68,11 +68,17 @@ inferlast's CPU-first philosophy names it and `gpucheck` labels the size/speed l
 it cannot run Q4 GGUF on torch 2.2.2 itself, and must not pretend to.
 
 ### Speculative decoding
-**Gate: EXTERNAL (engine).** The single highest-leverage CPU win (`[MEASURED by
-others]`: ~1.7-2x on CPU 3B with a ~10x-smaller draft). Requires a draft-model
-harness native to llama.cpp/Medusa (or `assisted_generation` in newer transformers,
-which torch 2.2.2's CPU path doesn't make practical here). Not shippable on this
-stack today; documented as the next CPU frontier rather than faked.
+**Gate: SHIPPED/MEASURED (measurement) — and measured SLOWER on this stack.**
+inferlast now measures assisted decode honestly via `src/speculative.py`
+(`inferlast run --draft-model ...`), instead of trusting the literature's ~1.7-2x
+CPU claim. `[MEASURED]` on this hardware: SmolLM2-135M drafting Qwen2.5-0.5B =
+**0.55x (SLOWER)** — because on bandwidth-bound CPU the draft and target both
+stream their weights through the same memory bandwidth, and a separate HF draft
+does not share an optimized kernel path. The literature win is engine- and
+scale-dependent (llama.cpp draft shares loaded weights/kernels); it does NOT
+transfer to a naive two-HF-model torch-2.2.2 setup. inferlast reports the real
+number and a FASTER/SLOWER/FLAT verdict — this is the honest measurement that
+pre-empts the classic false "speculative = free speedup" claim.
 
 ### KV-cache quantization (q8_0/q4_0 K/V)
 **Gate: EXTERNAL (engine).** Shrinks long-context KV RAM so a bigger model/longer
@@ -100,8 +106,11 @@ count, not whatever the OS happened to give.
 ## How the reporter surfaces all of this
 
 `run_auto_optimizer` now emits a `techniques.kv_cache` slot (avail / measured
-ms-per-token on KV vs no-cache path / speedup / honest note) and the markdown report
-renders a "2b. Optimization techniques measured (KV cache)" section. When a model
+ms-per-token on KV vs no-cache path / speedup / honest note) and a
+`techniques.speculative` slot (off unless a `--draft-model` is supplied; FASTER /
+SLOWER / FLAT verdict from real measurement). The markdown report renders a
+"2b. Optimization techniques measured (KV cache)" section and a "2c. Speculative
+(assisted) decoding" section when a draft is provided. When a model
 has no KV-cache API, `avail: False` is reported with the reason — never a silent or
 fabricated number.
 
