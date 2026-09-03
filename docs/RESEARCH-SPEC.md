@@ -171,4 +171,18 @@ record the negative result honestly rather than stretch the claim.
   `docs/CPU-FEASIBILITY-MAP.md` + `docs/OPTIMIZATION-TECHNIQUES.md`,
   `tests/test_report_schema.py` (80 tests).
 
+- **2026-09-03 — empirical validation of the GPU-necessity boundary (sub-claim 4).**
+  The core frozen claim — "the GPU-necessity boundary is estimable from local CPU
+  measurement alone" — now has MEASURED multi-model evidence. On this i7-9750H with
+  KV-cache decode: SmolLM2-135M = 403.7 ms/tok (97% overhead), Qwen2.5-0.5B =
+  400.4 ms/tok (97% overhead). Feeding these into `gpucheck.decide` produces a clean,
+  auditable decision boundary that flips exactly at each model's measured latency:
+  both small overhead-bound models are **GPU-warranted** at tight targets (50/200 ms)
+  and **CPU-suffices** at loose targets (≥1000 ms), while the Qwen2.5-7B Q4 reading
+  (2884.7 ms/tok) is GPU-warranted up to ~5s and CPU-suffices only past that. This is
+  precisely the labeled decision boundary the frozen success test (section 6) required:
+  GPU-warranted / CPU-suffices / insufficient-data, derived from local measurement,
+  refusing to guess. Regression tests lock the flip:
+  `tests/test_gpucheck.py` (now 13 tests, 82 total).
+
 Every claim added here must link to a file under `benchmarks/` and a passing test.

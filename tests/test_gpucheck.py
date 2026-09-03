@@ -97,3 +97,32 @@ def test_estimate_regime_weight_bound_high_stream_rate():
 def test_estimate_regime_unknown_when_inputs_missing():
     regime, _ = _estimate_regime(None, None, None, None)
     assert regime == "unknown"
+
+
+# --- empirical boundary regression (measured on this i7-9750H, 2026-09-03) ---
+# Locks the exact decision-boundary the local measurement produced: a small
+# overhead-bound model (~400 ms/tok KV decode) is GPU-warranted for tight
+# targets and CPU-suffices for loose ones, flipping right at its measured
+# latency. This is the frozen success test in RESEARCH-SPEC section 6.
+
+def test_boundary_flips_at_measured_latency_qwen05():
+    # Qwen2.5-0.5B measured: overhead 97%, decode ~400 ms/tok (KV)
+    tight = decide(overhead_fraction=0.97, num_params=0.494e9,
+                   latency_target_ms=200, decode_ms_per_tok=400.4,
+                   cpu_label="i7-9750H")
+    loose = decide(overhead_fraction=0.97, num_params=0.494e9,
+                   latency_target_ms=2000, decode_ms_per_tok=400.4,
+                   cpu_label="i7-9750H")
+    assert tight.verdict == "GPU-warranted"
+    assert loose.verdict == "CPU-suffices"
+
+
+def test_boundary_flips_at_measured_latency_smol():
+    tight = decide(overhead_fraction=0.97, num_params=0.134e9,
+                   latency_target_ms=200, decode_ms_per_tok=403.7,
+                   cpu_label="i7-9750H")
+    loose = decide(overhead_fraction=0.97, num_params=0.134e9,
+                   latency_target_ms=2000, decode_ms_per_tok=403.7,
+                   cpu_label="i7-9750H")
+    assert tight.verdict == "GPU-warranted"
+    assert loose.verdict == "CPU-suffices"

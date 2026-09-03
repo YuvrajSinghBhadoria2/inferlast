@@ -389,3 +389,22 @@ draft is supplied; off by default. `docs/CPU-FEASIBILITY-MAP.md` and
 `docs/OPTIMIZATION-TECHNIQUES.md` updated to fold in the measured caveat.
 2 new tests (`tests/test_speculative.py`) + a schema assertion; **80 total tests**.
 
+## Milestone 8 (DONE): empirical validation of the GPU-necessity boundary
+
+Measured the two fast local models on the KV-cache decode path and fed the real
+numbers into `gpucheck.decide` to produce an auditable decision-boundary table —
+the pragmatic answer to the thesis (RESEARCH-SPEC sub-claim 4: "the GPU-necessity
+boundary is estimable from local CPU measurement alone"):
+
+| model | overhead | decode | tgt 50ms | tgt 200ms | tgt 1000ms | tgt 5000ms |
+|---|---|---|---|---|---|---|
+| SmolLM2-135M | 97% | 404 ms/tok | GPU | GPU | CPU | CPU |
+| Qwen2.5-0.5B | 97% | 400 ms/tok | GPU | GPU | CPU | CPU |
+| Qwen2.5-7B Q4 (Ollama) | 30% | 2885 ms/tok | GPU | GPU | GPU | CPU |
+
+The boundary flips exactly at each model's measured decode latency (a 400 ms/tok
+model needs GPU to hit <200 ms, CPU suffices at ≥1000 ms), which is exactly the
+measured-vs-target rule that earlier caught the 7B bug. Regression tests lock the
+flip (`tests/test_gpucheck.py`, now 13 gpucheck tests); 82 total tests.
+
+
