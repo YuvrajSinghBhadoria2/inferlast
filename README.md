@@ -35,6 +35,20 @@ The project is organized around one falsifiable claim — **a decision rule for 
 
 For tiny models on CPU, inferlast measures that **~98–99% of decode wall time is framework overhead, not model math**. So **blindly quantizing the weights will not speed up an overhead-bound model** — and inferlast *measures* that rather than pretending otherwise. That refusal-to-guess behavior is the whole point.
 
+## Install
+
+```bash
+pip install inferlast            # Python 3.10-3.12; CPU-first, no GPU/CUDA needed
+```
+
+This installs the core (`import trustcheck`, `import gpucheck`, ...) and the
+`inferlast` CLI. Or run straight from the repo:
+
+```bash
+git clone https://github.com/YuvrajSinghBhadoria2/inferlast.git
+pip install -r requirements.txt
+```
+
 ## 30-second try
 
 ```bash

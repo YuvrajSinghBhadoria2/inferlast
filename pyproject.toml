@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "inferlast"
+version = "0.1.0"
+description = "CPU-first LLM inference optimizer: prove a real win on your laptop CPU before you pay to rent a GPU. Trustcheck catches any benchmark that is really just noise."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Yuvraj Singh Bhadoria", email = "yuvrajsinghbhado2030@gmail.com" }]
+keywords = ["llm", "inference", "optimization", "cpu", "quantization", "benchmark", "trustcheck"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "torch>=2.2,<2.5",
+    "transformers>=4.40,<4.47",
+    "numpy>=1.26,<2",
+]
+
+[project.urls]
+Homepage = "https://github.com/YuvrajSinghBhadoria2/inferlast"
+Repository = "https://github.com/YuvrajSinghBhadoria2/inferlast"
+Releases = "https://github.com/YuvrajSinghBhadoria2/inferlast/releases"
+
+[project.scripts]
+inferlast = "cli:main"
+
+[tool.setuptools]
+# The src/ modules are intentionally top-level importables (import trustcheck,
+# import gpucheck, ...) — identical to how the scripts and tests already use them.
+package-dir = { "" = "src" }
+py-modules = [
+    "auto_optimizer",
+    "batcher",
+    "cli",
+    "gpucheck",
+    "profiler",
+    "quantize",
+    "trustcheck",
+]
