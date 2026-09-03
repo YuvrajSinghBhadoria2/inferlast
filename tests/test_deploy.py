@@ -6,10 +6,14 @@ deploy target, and prefer the measured batch over a caller default.
 
 import json
 import os
+import re
+from pathlib import Path
 
 from deploy import (
     build_deployment, summarize, write_artifact,
 )
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _qwen_out():
@@ -76,3 +80,13 @@ def test_write_artifact_writes_json_and_run_script():
     os.remove(json_path)
     os.remove(sh_path)
     os.rmdir(out_dir)
+
+
+def test_deploy_is_packaged_in_the_wheel():
+    """Regression guard: setuptools flat-module discovery silently skipped
+    `deploy.py`, so `inferlast deploy` would have been broken after pip install.
+    The module must be declared in pyproject's py-modules so the wheel ships it."""
+    pyproject = (REPO_ROOT / "pyproject.toml").read_text()
+    block = pyproject.split("py-modules = [")[-1].split("]")[0]
+    modules = re.findall(r'"([A-Za-z_][A-Za-z0-9_]*)"', block)
+    assert "deploy" in modules, "deploy must be declared in py-modules to ship"

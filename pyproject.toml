@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "inferlast"
-version = "0.3.1"
+version = "0.3.2"
 description = "CPU-first LLM inference optimizer: prove a real win on your laptop CPU before you pay to rent a GPU. Trustcheck catches any benchmark that is really just noise."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -38,11 +38,15 @@ inferlast = "cli:main"
 # The src/ modules are intentionally top-level importables (import trustcheck,
 # import gpucheck, ...) — identical to how the scripts and tests already use them.
 package-dir = { "" = "src" }
+# Explicitly enumerate the top-level modules. Flat-module auto-discovery in
+# setuptools silently skips newly added files (deploy.py was missed once and
+# would have shipped a broken `inferlast deploy`), so we list them deterministically.
 py-modules = [
     "auto_optimizer",
     "batcher",
     "cli",
     "decode",
+    "deploy",
     "gpucheck",
     "profiler",
     "quantize",

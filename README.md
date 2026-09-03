@@ -111,6 +111,29 @@ rule and a `deploy.json` + `run.sh` artifact. It never overclaims: GPU-warranted
 tok/s on your target hardware. The design and its sources are in
 [`docs/DECIDE-DEPLOY-SPEC.md`](docs/DECIDE-DEPLOY-SPEC.md).
 
+**Worked example** (loose latency + low traffic → keep it on CPU):
+
+```bash
+# 1) measure on YOUR machine (no GPU needed)
+inferlast run --model Qwen/Qwen2.5-0.5B-Instruct --out ./verdict
+
+# 2) decide + get a ready-to-run config
+inferlast deploy --from ./verdict/create.json \
+    --latency-target-ms 1000 --req-per-hr 100 --out ./deploy
+```
+
+```
+verdict: CPU-suffices
+deploy target: cpu
+## Run this (llama.cpp (llama-server))
+llama-server -m Qwen/Qwen2.5-0.5B-Instruct-Q4_K_M.gguf -ngl 0 -t 12 -c 4096 -b 16 --host 0.0.0.0 --port 8080
+```
+
+That command is also written to `./deploy/run.sh` (with `./deploy/deploy.json`
+for the auditable decision inputs). Tighten `--latency-target-ms` to `100` and the
+same report instead answers `GPU-warranted` → a `vllm serve` command — but always
+says "verify tok/s on the actual GPU before scaling spend."
+
 ## What it caught on my machine
 
 A quiet, annoying truth that most optimization tutorials skip: **on an overhead-bound CPU model, INT8 quantization is not a free win.** inferlast measured it three ways and told the truth:
