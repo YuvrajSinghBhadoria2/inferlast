@@ -1,7 +1,7 @@
 <p align="center">
   <br/>
   <img src="https://img.shields.io/badge/status-Phase%201%20(CPU)-informational" alt="Phase 1 CPU"/>
-  <img src="https://img.shields.io/badge/tests-55%20passing-brightgreen" alt="tests"/>
+  <img src="https://img.shields.io/badge/tests-57%20passing-brightgreen" alt="tests"/>
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="license"/>
   <a href="https://pypi.org/project/inferlast/"><img src="https://img.shields.io/pypi/v/inferlast" alt="PyPI"/></a>
   <img src="https://img.shields.io/badge/python-3.10%2F3.11%2F3.12-blue" alt="python"/>
@@ -156,7 +156,7 @@ python scripts/bench.py --model <m> --trustcheck \
 
 ```bash
 pip install pytest
-python -m pytest        # 55 fast tests, no model downloads
+python -m pytest        # 57 fast tests, no model downloads
 ```
 
 The suite guards the things that would sink a tool like this: profiler categorisation & no-double-counting, the robust INT8 quality metric + the honest decision rule, batcher best-batch selection, the `trustcheck` noise/brittle-metric/read-by-nothing logic, the `gpucheck` GPU-necessity decision rule (including its refusal to guess when data is missing), and a **regression test that the report always emits the new metrics — never a stale one.**

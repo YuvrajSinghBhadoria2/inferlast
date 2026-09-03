@@ -261,3 +261,35 @@ All five milestones DONE. The auto-optimizer is a runnable, evidence-producing,
 quantization + batching + proof report; `pytest` verifies the engine. Next
 natural steps are outside this repo's Phase 1 (see README) and are a human
 decision, not a blocker.
+
+## Big-model boundary test (2026-09-03): Qwen2.5-7B Q4 on this CPU
+
+Researched two ideas for "run bigger models on 16 GB RAM":
+- **Docker/containers = dead end (evidence-backed).** A container shares the
+  host's RAM; it cannot create memory. A 28 GB-fp32 7B won't fit in a container
+  on a 16 GB host any more than on the bare host — Docker makes it slightly worse
+  (VM overhead). No Docker experiment run; this is settled by how containers work.
+- **The real lever is GGUF Q4 quantization (llama.cpp / Ollama).** A 7B drops
+  from ~28 GB (fp32) to ~4.6 GB (Q4_K_M) — fits comfortably in 16 GB RAM.
+
+Ran the real thing: `qwen2.5:7b` (Q4, 4.7 GB) via Ollama on this i7-9750H.
+Measured, not claimed:
+
+| metric | value |
+|---|---|
+| footprint | 4.7 GB (vs ~28 GB fp32) |
+| model load | 26 s |
+| decode | **2884.7 ms/token (~0.3 tok/s)** |
+| output quality | normal Qwen response |
+
+It **runs**, but at 0.3 tok/s it is not interactive-usable — a demonstration of
+"a model that needs 28 GB fp32 runs in 16 GB," not a serving story.
+
+**Resulting gpucheck bug found + fixed.** Feeding the real 7B numbers into
+`gpucheck` exposed a real flaw: the `weight-bound` heuristic checks
+`weight_stream_gbps >= 0.5*bw` (here ~5.3 vs 20.5 GB/s, so "not weight-bound"),
+so the rule said **CPU-suffices even with a 200 ms/token target while the model
+was 14x over it**. Fix: added a latency-feasibility rule — if *measured* decode
+> *target*, GPU-warranted regardless of regime (auditable `measured_vs_target_x`).
+Now 11 gpucheck tests, 57 total. The boundary thesis held up against a real
+big-ish model *and* uncovered a gap the small-model tuning had missed.

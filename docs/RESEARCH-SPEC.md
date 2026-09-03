@@ -90,4 +90,18 @@ record the negative result honestly rather than stretch the claim.
   (9 tests), README, PROGRESS. The decision **rule** is shipped; the *boundary's
   empirical validation* across more model/hardware combos is the open next step.
 
+- **2026-09-03 — big-model boundary test + a found-and-fixed gpucheck bug.**
+  Ran `Qwen2.5-7B` (Q4 GGUF via Ollama) on the same i7-9750H CPU: measured
+  **decode 2884.7 ms/token (~0.3 tok/s), 4.7 GB footprint, 26 s load** (a model
+  that needs ~28 GB in fp32 runs in 16 GB RAM via Q4). Then fed these real
+  numbers to `gpucheck`: the pre-fix rule said **CPU-suffices even at a 200 ms
+  target while the model was 14x over it**, because its `weight-bound` heuristic
+  (`weight_stream_gbps >= 0.5*bw`) missed this too-slow-model case (streams only
+  ~5.3 GB/s, under the 20.5 GB/s threshold). **Fixed:** added a latency-feasibility
+  check — if *measured* decode exceeds the *target*, GPU-warranted regardless of
+  regime, with an auditable `measured_vs_target_x`. Regression tests:
+  `tests/test_gpucheck.py` (now 11 gpucheck tests, 57 total). This validated the
+  thesis boundary against a real big-ish model and hardened the rule. Evidence:
+  this entry, `src/gpucheck.py`, `tests/test_gpucheck.py`.
+
 Every claim added here must link to a file under `benchmarks/` and a passing test.

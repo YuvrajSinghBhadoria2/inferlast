@@ -130,6 +130,28 @@ def decide(
     # Feed the auditable facts we worked out:
     inputs.update({k: v for k, v in facts.items() if k not in inputs})
 
+    # --- Direct latency-feasibility check (the strongest honest signal) ---
+    # If we measured a per-token decode latency and you need faster than that,
+    # a CPU-only schedule cannot meet the requirement -- no matter the regime.
+    # The bandwidth heuristic below can miss this (a too-slow big model streams
+    # well under the bus limit yet is hopeless for the latency target). Discovered
+    # by testing gpucheck against a real Q4 7B run at 2884.7 ms/tok on an i7-9750H.
+    if decode_ms_per_tok is not None and latency_target_ms is not None and decode_ms_per_tok > 0:
+        if decode_ms_per_tok > latency_target_ms:
+            inputs["measured_vs_target_x"] = round(decode_ms_per_tok / latency_target_ms, 2)
+            return GpuSuggestion(
+                verdict="GPU-warranted",
+                reason=(
+                    f"measured CPU decode is {decode_ms_per_tok:.0f} ms/token, "
+                    f"{inputs['measured_vs_target_x']}x over your {latency_target_ms:.0f} ms/token "
+                    "target. A CPU-only schedule cannot meet the requirement; a GPU is the "
+                    "defensible route to that latency."
+                ),
+                regime=regime,
+                score=0.9,
+                inputs=inputs,
+            )
+
     # --- Cases that force insufficient-data (do not fake an answer) ---
     needing_latency = latency_target_ms is None and regime in ("overhead-bound", "unknown")
     if needing_latency or cpu_label is None:

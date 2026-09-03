@@ -55,6 +55,24 @@ def test_missing_latency_on_overhead_bound_is_insufficient_data():
     assert "latency_target_ms" in v.reason
 
 
+# --- latency-feasibility regression (discovered on a real Q4 7B) --------------
+# A measured decode far over the latency target must be GPU-warranted, even when
+# the bandwidth heuristic calls the regime "unknown" (a too-slow big model
+# streams well under the bus limit yet cannot meet the requirement).
+
+def test_measured_latency_over_target_is_gpu_warranted():
+    # The exact real case: Qwen2.5-7B Q4 measured at 2884.7 ms/tok on i7-9750H.
+    v = decide(num_params=7.61e9, decode_ms_per_tok=2884.7,
+               latency_target_ms=500, cpu_label="i7-9750H")
+    assert v.verdict == "GPU-warranted"
+    assert "measured_vs_target_x" in v.inputs
+
+def test_latency_check_ignores_missing_target():
+    # No target -> the latency-feasibility check cannot fire; cpu_label path wins.
+    v = decide(num_params=7.61e9, decode_ms_per_tok=2884.7, cpu_label="i7-9750H")
+    assert v.verdict == "insufficient-data"
+
+
 # --- helpers unit -------------------------------------------------------------
 
 def test_footprint_gb_converts_params_to_gb():
