@@ -138,20 +138,31 @@ python -m pytest        # 55 fast tests, no model downloads
 
 The suite guards the things that would sink a tool like this: profiler categorisation & no-double-counting, the robust INT8 quality metric + the honest decision rule, batcher best-batch selection, the `trustcheck` noise/brittle-metric/read-by-nothing logic, the `gpucheck` GPU-necessity decision rule (including its refusal to guess when data is missing), and a **regression test that the report always emits the new metrics — never a stale one.**
 
-## Roadmap (honest)
+## Roadmap
 
-Phase 1 is complete and CPU-only — no GPU needed. Shipped so far: bottleneck/decode/quant/batch
-selection, **`trustcheck`** (the false-win catcher) **and** `gpucheck` (the "do you even need a GPU?"
-decision rule). What's next, in order of value:
+Phase 1 is done and runs on a plain laptop CPU — no GPU needed.
 
-- [x] **"Do I even need a GPU?"** — shipping as `gpucheck`; a CPU-only decision (GPU-warranted / CPU-suffices / insufficient-data), fed by real `--decode` measurements and reached via `--decode-ms-per-tok`
-- [ ] **Validate the gpucheck boundary** on more model/hardware/input combinations
-- [ ] **FP4 / INT4 quantization** — beyond INT8 (torch.ao)
-- [ ] **Latency percentiles (p50/p99)** — not just averages
-- [ ] **Memory / KV-cache footprint** measurement
-- [ ] **Serving-engine integration** (vLLM / llama.cpp) as an enrichment layer
+**Shipped:**
 
-Nothing here is a live claim — it's the plan. PRs welcome.
+- **`trustcheck` — the false-win catcher.** Tells you the benchmark you were
+  about to publish is machine noise, not a win. It caught *this repo's own*
+  3.0x-vs-0.65x as noise.
+- **`gpucheck` — "do you even need a GPU?"** A CPU-only decision rule:
+  GPU-warranted / CPU-suffices / insufficient-data. It refuses to guess when it
+  can't tell.
+- Bottleneck / decode / quant / batch selection.
+
+**Where we want help next** (strongest help first):
+
+- **Validate the `gpucheck` boundary on hardware we can't reach.** Your numbers
+  ship behind an honest "requires <hardware>" gate — a 4 GB card, an Apple
+  Silicon box, a desktop with more RAM. Proof on hardware we lack turns a claim
+  into a finding. *This is the most valuable way to contribute right now.*
+- Quantization beyond INT8 (FP4 / INT4), latency percentiles (p50/p99), memory /
+  KV-cache footprint, and serving-engine integration (vLLM / llama.cpp) as an
+  enrichment layer.
+
+PRs welcome. Nothing here is a live claim — it's the plan.
 
 ## License
 
