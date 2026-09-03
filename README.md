@@ -7,8 +7,8 @@
 </p>
 
 <h1 align="center">inferlast</h1>
-<p align="center"><b>No GPU required.</b> Prove a real win on your CPU <i>before</i> you ever pay to rent one.<br/>
-Profile where your model's time <i>actually</i> goes, let it pick the optimization — then <b>prove</b> the win with a before/after benchmark it refuses to fake.</p>
+<p align="center"><b>Fine-tune-free, GPU-free inference:</b> prove a real optimization win on a plain laptop CPU <i>before</i> you ever pay to rent one.<br/>
+Most demos tell you a change is <b>3x faster</b> — inferlast catches when that number is just machine noise.</p>
 
 <p align="center">
   <a href="#why">Why</a> · <a href="#30-second-try">30-second try</a> · <a href="#what-it-caught">What it caught on my machine</a> · <a href="#how-it-works">How it works</a> · <a href="#roadmap">Roadmap</a>
@@ -49,6 +49,13 @@ Decode:      ~1220 ms/token (0.8 tok/s)
 Quantization: INT8 = 1.5x but shifts the answer → KEEP fp32 (not a win)
 Batching:    B=16 → ~48 tok/s total          Pick B for your goal.
 ```
+
+And the part that catches the false wins — `trustcheck` on this repo's own
+recorded evidence (the same config that reported 3.0x faster):
+
+<p align="center">
+  <img src="assets/trustcheck-proof.png" alt="trustcheck catches a false win" width="640"/>
+</p>
 
 Run the individual stages to look closer:
 

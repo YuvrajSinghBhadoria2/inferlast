@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="520" viewBox="0 0 880 520">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#1e293b"/>
+    </linearGradient>
+  </defs>
+  <rect width="880" height="520" rx="16" fill="url(#bg)"/>
+
+  <!-- header -->
+  <text x="56" y="60" font-family="Menlo, monospace" font-size="22" fill="#38bdf8" font-weight="bold">inferlast</text>
+  <text x="56" y="90" font-family="Menlo, monospace" font-size="15" fill="#94a3b8">trustcheck — is that benchmark "win" real?</text>
+
+  <!-- naive claim (struck through) -->
+  <rect x="56" y="120" width="768" height="64" rx="10" fill="#1e293b" stroke="#475569" stroke-width="1"/>
+  <text x="76" y="150" font-family="Menlo, monospace" font-size="14" fill="#f87171" text-decoration="line-through">Your report said:  "INT8 = 3.0x faster.  Ship it."</text>
+  <text x="76" y="172" font-family="Menlo, monospace" font-size="13" fill="#64748b">Same config, measured again the same day:  0.65x slower. That's machine noise.</text>
+
+  <!-- evidence rows -->
+  <text x="76" y="232" font-family="Menlo, monospace" font-size="13" fill="#38bdf8"># run_all / trustcheck on real before-after samples</text>
+  <text x="76" y="258" font-family="Menlo, monospace" font-size="13" fill="#cbd5e1">controls    = [1180.07, 1315.67]   # fp32 ms/token, two sessions</text>
+  <text x="76" y="280" font-family="Menlo, monospace" font-size="13" fill="#cbd5e1">treatments  = [ 390.14, 2030.92]   # int8 ms/token, two sessions</text>
+
+  <!-- verdict card -->
+  <rect x="56" y="316" width="768" height="150" rx="12" fill="#450a0a" stroke="#dc2626" stroke-width="2"/>
+  <text x="76" y="350" font-family="Menlo, monospace" font-size="18" fill="#fecaca" font-weight="bold">TRUST VERDICT:  FALSE</text>
+  <text x="76" y="378" font-family="Menlo, monospace" font-size="13" fill="#fca5a5">speed:  MARGINAL  (CI [-1.78x, 5.45x] straddles 1.0x</text>
+  <text x="92" y="400" font-family="Menlo, monospace" font-size="13" fill="#fca5a5">         -&gt; within single-run noise, NOT a reliable win)</text>
+  <text x="76" y="426" font-family="Menlo, monospace" font-size="13" fill="#fca5a5">metric: BRITTLE - can lie  (token/string match, no logits)</text>
+  <text x="76" y="452" font-family="Menlo, monospace" font-size="13" fill="#fecaca">caught a false win a naive dashboard would have published.</text>
+
+  <!-- footer -->
+  <text x="56" y="498" font-family="Menlo, monospace" font-size="13" fill="#64748b">Prove a real win on CPU before you pay to rent a GPU.</text>
+</svg>
