@@ -140,6 +140,72 @@ def run_auto_optimizer(
     return out, report
 
 
+def _bottom_line(o: dict) -> list[str]:
+    """One decisive 'what should you actually do' verdict, derived only from the
+    measured fields in `o`. This is the headline of the report: it turns a wall
+    of numbers into a sharp, honest recommendation."""
+    b = o["batching"]
+    q = o["quantization"]
+    kv = o.get("techniques", {}).get("kv_cache", {})
+    sp = o.get("techniques", {}).get("speculative", {})
+
+    # throughput lever: best batch tok/s vs B=1
+    base = b["rows"][0]["tok_per_s"] if b["rows"] else None
+    if base:
+        batch_speedup = (b["best_tok_per_s"] / max(base, 1e-9)
+                         if base > 0 else None)
+        best_batch = b["best_batch"]
+        total = b["best_tok_per_s"]
+    else:
+        batch_speedup = None
+        best_batch = None
+        total = None
+
+    # decode lever: KV cache vs recompute
+    kv_speedup = kv.get("kv_speedup_x") if kv.get("avail") else None
+
+    # quant verdict
+    q_verdict = ("SHIP int8" if q["recommended_int8"] else "KEEP fp32")
+    if q["recommended_int8"]:
+        q_brief = (f"INT8 is {q['speedup_int8_over_fp32']:.2f}x faster and "
+                   "keeps quality — ship it")
+    else:
+        s = q["speedup_int8_over_fp32"]
+        if s >= 1.0:
+            speed_txt = f"INT8 {s:.2f}x faster"
+        else:
+            speed_txt = f"INT8 {s:.2f}x (slower, not faster)"
+        q_brief = (f"{speed_txt} but quality top-5 "
+                   f"{q['top5_overlap']:.2f} — not a real win, rejected")
+
+    lines = ["## Fastest CPU config (bottom line)"]
+    # collect the provable wins, verbatim from measurement.
+    # a "win" requires a REAL gain (>=1.05x); 1.0x is not a win.
+    wins: list[str] = []
+    if best_batch and batch_speedup and batch_speedup >= 1.05:
+        wins.append(f"batching B={best_batch} -> ~{total:.1f} tok/s "
+                    f"({batch_speedup:.1f}x total throughput vs B=1)")
+    if kv_speedup and kv_speedup >= 1.05:
+        wins.append(f"KV cache -> ~{kv_speedup:.1f}x decode vs naive recompute")
+    if wins:
+        lines.append("Real, measured wins (I would ship these): "
+                     + "; ".join(wins) + ".")
+    else:
+        lines.append("No single lever produced a clean measured win on this "
+                     "hardware; treat these numbers as a baseline.")
+
+    lines.append(
+        f"Quantization: {q_verdict} — {q_brief}."
+    )
+    if sp.get("avail") and "error" not in sp:
+        lines.append(
+            f"Speculative decode: {sp['speedup_x']}x -> {sp['verdict']}"
+            " on this CPU."
+        )
+    lines.append("")
+    return lines
+
+
 def _report(o: dict) -> str:
     p = o["prefill"]
     d = o["decode"]
@@ -157,6 +223,7 @@ def _report(o: dict) -> str:
         "# Auto-Optimizer proof report",
         f"hardware: {o['hardware']}   prompt: {o['prompt']}",
         "",
+        *_bottom_line(o),
         "## 1. Bottleneck (from profile)",
         f"prefill throughput ~{p['tok_per_s']:.1f} tok/s; wall {p['wall_total_s']:.2f}s "
         f"for {p['tokens']} tokens.",

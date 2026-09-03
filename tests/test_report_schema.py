@@ -5,7 +5,7 @@ import torch
 import pytest
 
 from conftest import make_mini_lm
-from auto_optimizer import run_auto_optimizer
+from auto_optimizer import run_auto_optimizer, _bottom_line
 
 
 class FakeTok:
@@ -37,6 +37,8 @@ def test_report_uses_new_metrics_and_bans_stale_field():
     assert "logit-cos" in report or "logit_cosine" in report
     assert "worst repeat" in report
     assert "output_match_pct" not in report  # never reconstruct stale text
+    # report always leads with the sharp bottom-line verdict (not a generic wall)
+    assert "## Fastest CPU config (bottom line)" in report
     # all persisted sections present
     for section in ("prefill", "decode", "quantization", "batching", "elapsed_s"):
         assert section in out
@@ -47,3 +49,64 @@ def test_report_uses_new_metrics_and_bans_stale_field():
     # speculative slot always exists; off by default (no draft supplied)
     assert "speculative" in out["techniques"]
     assert out["techniques"]["speculative"]["avail"] is False
+
+
+def _base():
+    return {
+        "quantization": {"recommended_int8": False,
+                         "speedup_int8_over_fp32": 1.47,
+                         "top5_overlap": 0.18},
+        "batching": {"rows": [{"tok_per_s": 25.0}, {"tok_per_s": 83.8}],
+                     "best_batch": 16, "best_tok_per_s": 83.8},
+        "techniques": {"kv_cache": {"avail": True, "kv_speedup_x": 1.48},
+                       "speculative": {"avail": False}},
+    }
+
+
+def test_bottom_line_reports_real_wins_and_rejects_fake_quant():
+    lines = _bottom_line(_base())
+    txt = "\n".join(lines)
+    assert "batching B=16" in txt and "3.4x total throughput" in txt
+    assert "KV cache -> ~1.5x decode" in txt
+    # quantization is rejected despite being FASTER: the top-5 quality broke
+    assert "KEEP fp32" in txt
+    assert "1.47x faster" in txt and "quality top-5 0.18" in txt
+    # honesty: it explicitly says the 1.47x is NOT a real win
+    assert "not a real win" in txt
+
+
+def test_bottom_line_ships_int8_when_quality_holds():
+    o = _base()
+    o["quantization"] = {"recommended_int8": True,
+                         "speedup_int8_over_fp32": 1.8,
+                         "top5_overlap": 0.9}
+    txt = "\n".join(_bottom_line(o))
+    assert "SHIP int8" in txt and "1.80x faster" in txt
+
+
+def test_bottom_line_labels_slower_int8_honestly():
+    o = _base()
+    o["quantization"] = {"recommended_int8": False,
+                         "speedup_int8_over_fp32": 0.86,
+                         "top5_overlap": 0.65}
+    txt = "\n".join(_bottom_line(o))
+    assert "KEEP fp32" in txt
+    assert "slower, not faster" in txt  # must not call 0.86x "faster"
+    assert "0.86x (slower" in txt
+
+
+def test_bottom_line_surfaces_measured_speculative_slower():
+    o = _base()
+    o["techniques"]["speculative"] = {
+        "avail": True, "speedup_x": 0.55, "verdict": "SLOWER"}
+    txt = "\n".join(_bottom_line(o))
+    assert "0.55x -> SLOWER" in txt
+
+
+def test_bottom_line_no_win_treated_as_baseline():
+    o = _base()
+    o["batching"] = {"rows": [{"tok_per_s": 25.0}], "best_batch": 1,
+                     "best_tok_per_s": 25.0}
+    o["techniques"]["kv_cache"] = {"avail": False}
+    txt = "\n".join(_bottom_line(o))
+    assert "No single lever produced a clean measured win" in txt
