@@ -104,4 +104,15 @@ record the negative result honestly rather than stretch the claim.
   thesis boundary against a real big-ish model and hardened the rule. Evidence:
   this entry, `src/gpucheck.py`, `tests/test_gpucheck.py`.
 
+- **2026-09-03 — "what fits on a 6-core/16 GB laptop CPU" map researched.**
+  Literature + local measurement answered the mission question ("anyone runs any
+  size on CPU, no GPU"): quantization (Q4 GGUF) lets a 16 GB box run up to ~8B
+  comfortably and ~14B for batch; 32B+ does not fit; disk-offload (mmap) is a
+  load-time win, not a capacity win. Discovers our earlier 0.3 tok/s 7B reading
+  is likely a swap/load artifact on a heavily-loaded box, not the hardware's
+  truth (~6-9 tok/s expected). Map + levers + GPU line in
+  `docs/CPU-FEASIBILITY-MAP.md`. One consequence for the thesis: the strongest
+  CPU speed lever is **speculative decoding** (~1.7-2x), which `gpucheck`'s model
+  does not yet count — a candidate extension.
+
 Every claim added here must link to a file under `benchmarks/` and a passing test.
