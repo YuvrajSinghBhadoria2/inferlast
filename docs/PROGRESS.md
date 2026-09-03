@@ -293,3 +293,9 @@ was 14x over it**. Fix: added a latency-feasibility rule — if *measured* decod
 > *target*, GPU-warranted regardless of regime (auditable `measured_vs_target_x`).
 Now 11 gpucheck tests, 57 total. The boundary thesis held up against a real
 big-ish model *and* uncovered a gap the small-model tuning had missed.
+
+**Follow-up honesty fix (bench.py):** pure-stats `--gpucheck`/`--trustcheck`
+(no model downloaded) now label the saved record's `model` field honestly
+(`gpucheck(stats-only)` / `trustcheck(user-samples)`) and name the file by
+that, instead of claiming the `--model` default was profiled. This stops a
+parameterized decision from polluting the measured `benchmarks/` ledger.
