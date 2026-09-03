@@ -3,6 +3,7 @@
   <img src="https://img.shields.io/badge/status-Phase%201%20(CPU)-informational" alt="Phase 1 CPU"/>
   <img src="https://img.shields.io/badge/tests-55%20passing-brightgreen" alt="tests"/>
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="license"/>
+  <a href="https://pypi.org/project/inferlast/"><img src="https://img.shields.io/pypi/v/inferlast" alt="PyPI"/></a>
   <img src="https://img.shields.io/badge/python-3.10%2F3.11%2F3.12-blue" alt="python"/>
   <a href="https://github.com/YuvrajSinghBhadoria2/inferlast/releases"><img src="https://img.shields.io/github/v/release/YuvrajSinghBhadoria2/inferlast" alt="release"/></a>
 </p>
@@ -50,6 +51,13 @@ pip install -r requirements.txt
 ```
 
 ## 30-second try
+
+```bash
+pip install inferlast                    # CPU-first, no GPU/CUDA needed
+inferlast run --model Qwen/Qwen2.5-0.5B-Instruct
+```
+
+Or run the full record-persisting pipeline from the repo:
 
 ```bash
 pip install -r requirements.txt          # torch CPU, transformers, pytest
@@ -159,6 +167,7 @@ Phase 1 is done and runs on a plain laptop CPU — no GPU needed.
 
 **Shipped:**
 
+- **`inferlast` on PyPI** — `pip install inferlast` gives you the CLI + core, verified end-to-end.
 - **`trustcheck` — the false-win catcher.** Tells you the benchmark you were
   about to publish is machine noise, not a win. It caught *this repo's own*
   3.0x-vs-0.65x as noise.

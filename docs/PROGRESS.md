@@ -245,6 +245,16 @@ best-scheduled CPU config.
 flip->GPU-warranted, weight-bound->GPU-warranted, and the refusal-to-guess cases
 (missing cpu_label / latency).
 
+## Packaging (DONE): `pip install inferlast`
+
+The core is a verified installable package on PyPI: `pip install inferlast`
+installs the six modules (`import trustcheck`, `import gpucheck`, ...) plus the
+`inferlast` CLI. Verified end-to-end by installing the built wheel in a clean
+Python 3.11 venv and running `inferlast run --model HuggingFaceTB/SmolLM2-135M-Instruct`
+(profile + quant + batch + honest verdict all emitted from the installed package).
+PyPI: https://pypi.org/project/inferlast/ (v0.1.0). Build with `uv build dist/`;
+publish with `uv publish`.
+
 ## Phase 1 status
 All five milestones DONE. The auto-optimizer is a runnable, evidence-producing,
 **unit-tested** tool: `scripts/run_all.py --model <m>` -> bottleneck + decode +
