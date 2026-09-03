@@ -26,7 +26,8 @@ def run(args: argparse.Namespace) -> None:
     tok = AutoTokenizer.from_pretrained(args.model)
     model = AutoModelForCausalLM.from_pretrained(args.model)
     model.eval()
-    _, report = run_auto_optimizer(model, tok, prompt=args.prompt, n_new=args.n_new)
+    _, report = run_auto_optimizer(model, tok, prompt=args.prompt,
+                                   n_new=getattr(args, "n_new", 12))
     print(report)
 
 

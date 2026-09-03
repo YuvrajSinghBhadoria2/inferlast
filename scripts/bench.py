@@ -16,11 +16,11 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from profiler import profile_forward, profile_decode, summarize
 
 
-def save(record, args, tags=""):
+def save(record, args, tags="", out_suffix=None):
     if args.out:
         outpath = os.path.join(os.path.dirname(__file__), "..", "benchmarks", args.out)
     else:
-        short = args.model.split("/")[-1]
+        short = out_suffix if out_suffix else args.model.split("/")[-1]
         outpath = os.path.join(
             os.path.dirname(__file__), "..", "benchmarks",
             f"{tags}profile_{short}.json".lstrip("_"),
@@ -106,10 +106,14 @@ def main() -> None:
         )
         print(f"VERDICT: {v.verdict}  (regime: {v.regime}, score: {v.score:.2f})")
         print(f"  reason: {v.reason}")
+        # A pure-stats gpucheck analyzed the *passed-in parameters*, not whatever
+        # --model names. Record it honestly so the evidence ledger never claims a
+        # model was profiled when it wasn't.
+        base = {**base, "model": "gpucheck(stats-only)"}
         record = {**base, "phase": "gpucheck",
                   "verdict": v.verdict, "regime": v.regime, "score": v.score,
                   "reason": v.reason, "gpucheck_inputs": v.inputs}
-        save(record, args, tags="gpucheck_")
+        save(record, args, tags="gpucheck_", out_suffix="stats-only")
     elif args.trustcheck:
         from trustcheck import audit, summarize_trust
         print("== trustcheck: is that 'win' real? ==")
@@ -133,11 +137,17 @@ def main() -> None:
                   metric_name="token match", comparison_level="token",
                   config_key=args.config_key)
         print(summarize_trust(v))
-        record = {**base, "phase": "trustcheck",
+        # If samples were passed in (not measured on the --model here), the record
+        # must not claim that model was profiled.
+        base_rec = base
+        if not args.collect_repeats:
+            base_rec = {**base, "model": "trustcheck(user-samples)"}
+        record = {**base_rec, "phase": "trustcheck",
                   "controls": controls, "treatments": treatments,
                   "verdict": v.verdict, "speed_verdict": v.speed_verdict,
                   "metric_brittle": v.metric_brittle, "reason": v.reason}
-        save(record, args, tags="trust_")
+        save(record, args, tags="trust_",
+             out_suffix="user-samples" if not args.collect_repeats else None)
     elif args.quant:
         from quantize import auto_quantize, summarize_verdict
         print("== auto-quantization BEFORE/AFTER ==")
