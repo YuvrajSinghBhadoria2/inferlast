@@ -121,6 +121,14 @@ Six small modules, one job each:
 
 A key design decision: `run_all.py` **always persists** a canonical report, so the evidence on disk always matches the latest run — it can't go stale.
 
+## Architecture
+
+<p align="center">
+  <a href="docs/diagram/inferlast-architecture.html" title="Open the interactive animated architecture diagram">
+    <img src="assets/architecture-diagram.png" alt="inferlast architecture diagram" width="760"/>
+  </a>
+</p>
+
 ## gpucheck — the part that stops you overspending on hardware
 
 The whole project is built around one falsifiable claim (in

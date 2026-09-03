@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "inferlast — CPU-first LLM inference optimizer",
+    "output": "inferlast-architecture.html",
+    "quality_profile": "showcase",
+    "locale": "en",
+    "animation": "trace",
+    "views": [
+      { "id": "main-path", "label": "Profile → pick → apply → prove", "focus": ["cli", "auto", "report"], "note": "The one honest pipeline: measure, choose, apply, and only ship what provably pays off." },
+      { "id": "probes", "label": "Measurement probes", "focus": ["profiler", "quantize", "decode"], "note": "Where the time really goes on CPU, and which optimizations actually help." },
+      { "id": "verifiers", "label": "Truth verifiers", "focus": ["trustcheck", "gpucheck"], "note": "The parts that stop a fake win and refuse to sell you a GPU it can't defend." }
+    ]
+  },
+  "components": [
+    { "id": "cli", "type": "frontend", "label": "inferlast CLI", "sublabel": "run · audit", "pos": [40, 300], "size": [130, 62] },
+    { "id": "auto", "type": "backend", "label": "auto_optimizer", "sublabel": "orchestrator", "pos": [260, 300], "size": [140, 62] },
+    { "id": "profiler", "type": "backend", "label": "profiler", "sublabel": "attention · mlp · norm", "pos": [490, 100], "size": [135, 62] },
+    { "id": "quantize", "type": "backend", "label": "quantize", "sublabel": "INT8 vs fp32 + quality", "pos": [735, 100], "size": [135, 62] },
+    { "id": "decode", "type": "backend", "label": "decode", "sublabel": "KV-cache path", "pos": [980, 100], "size": [135, 62] },
+    { "id": "report", "type": "database", "label": "Proof report", "sublabel": "JSON + markdown", "pos": [1190, 300], "size": [120, 62] },
+    { "id": "trustcheck", "type": "security", "label": "trustcheck", "sublabel": "is the win real?", "pos": [490, 500], "size": [135, 62] },
+    { "id": "gpucheck", "type": "security", "label": "gpucheck", "sublabel": "decides GPU spend", "pos": [735, 500], "size": [135, 62] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Phase 1 · CPU-only (no GPU, no CUDA)", "wraps": ["cli", "auto", "profiler", "quantize", "decode", "trustcheck", "gpucheck", "report"] }
+  ],
+  "connections": [
+    { "id": "cli-to-auto", "from": "cli", "to": "auto", "label": "run / audit", "variant": "emphasis" },
+    { "id": "auto-to-profiler", "from": "auto", "to": "profiler", "label": "profile", "fromSide": "top", "toSide": "bottom", "labelDy": 24 },
+    { "id": "auto-to-quantize", "from": "auto", "to": "quantize", "label": "pick", "variant": "dashed", "fromSide": "top", "toSide": "bottom", "labelDy": 40 },
+    { "id": "auto-to-decode", "from": "auto", "to": "decode", "label": "apply", "fromSide": "top", "toSide": "bottom", "labelDy": 60 },
+    { "id": "auto-to-report", "from": "auto", "to": "report", "label": "prove", "variant": "emphasis", "fromSide": "right", "toSide": "left" },
+    { "id": "auto-to-trustcheck", "from": "auto", "to": "trustcheck", "label": "audit", "variant": "security", "fromSide": "bottom", "toSide": "top" },
+    { "id": "auto-to-gpucheck", "from": "auto", "to": "gpucheck", "label": "decide", "variant": "security", "fromSide": "bottom", "toSide": "top" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Measure", "items": ["profiler splits attention / mlp / norm and overhead vs weight time", "quantize measures INT8 speed AND per-token quality, not just speed", "decode proves the KV-cache path vs naive recompute"] },
+    { "dot": "emerald", "title": "Prove & decide", "items": ["auto_optimizer orchestrates all probes and persists one proof report", "trustcheck audits claims for the three ways a benchmark lies", "gpucheck consumes profiler's overhead + latency, then answers GPU-warranted / CPU-suffices — and refuses to guess"] }
+  ]
+}
