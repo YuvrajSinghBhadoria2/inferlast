@@ -115,4 +115,24 @@ record the negative result honestly rather than stretch the claim.
   CPU speed lever is **speculative decoding** (~1.7-2x), which `gpucheck`'s model
   does not yet count — a candidate extension.
 
+- **2026-09-03 — the biggest-common-problem wedge is the "audit ANY benchmark"
+  gap; shipped `inferlast audit` (v0.2.0).** Research verified that inference
+  performance is *measured* everywhere (vLLM, HF inference-benchmarker, dozens of
+  token-speed CLIs) but *audited* nowhere: every vendor/blog press release reports
+  a single number with no confidence interval, no noise band, no methodology
+  disclosure (documented failure modes: a "14x" that is really 8x on one buried
+  parameter; warm-cache rigs under-reporting p95 by 3-5x; batch vs single-stream
+  numbers compared incomparably). Statistical tooling (evalstats, lm-eval-harness,
+  error bars) exists for model-QUALITY evals, not for inference-TIMING data — that
+  is the defensible wedge where inferlast can be *more trustworthy than the big
+  companies' marketing* without competing on raw speed. Shipped `src/trustcheck.py`
+  generalization (arbitrary metric direction lower/higher-is-better) + a file
+  auditor `audit_benchmark_data`/`audit_benchmark_file` + `_methodology_gaps`
+  checklist (n_runs, metric, input_len, output_len, cache_state,
+  load_concurrency) + RESOLVED/UNRESOLVED/INSUFFICIENT_RUNS verdicts + warning
+  when a win is scope-limited. CLI: `inferlast audit <file> [--metric-name]
+  [--higher-is-better] [--declare KEY=VALUE]`. 15 new tests
+  (`tests/test_benchmark_audit.py`); 72 total. Evidence: `tests/`,
+  `src/trustcheck.py`, `src/cli.py`, this entry. Version bumped to 0.2.0.
+
 Every claim added here must link to a file under `benchmarks/` and a passing test.

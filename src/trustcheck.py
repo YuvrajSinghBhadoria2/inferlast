@@ -34,10 +34,13 @@ The output is a verdict + a reason, never just more numbers. CPU-only.
 
 from __future__ import annotations
 import ast
+import csv
+import json
 import math
 import os
 import statistics
 from dataclasses import dataclass, field
+from typing import Iterable
 
 import torch
 import torch.nn.functional as F
@@ -45,13 +48,23 @@ import torch.nn.functional as F
 
 # --- noise / confidence interval on a measured speedup -----------------------
 
-def speedup_scale_pair(controls: list[float], treatments: list[float]) -> float:
-    """Median speedup across paired runs, where LOWER samples = better (e.g.
-    ms/token latency). speedup = control/treatment, so 1.0 = no change and >1.0 =
-    the 'after' configuration is faster."""
+DIRECTION_LOWER_IS_BETTER = "lower-is-better"
+DIRECTION_HIGHER_IS_BETTER = "higher-is-better"
+
+
+def speedup_scale_pair(controls: list[float], treatments: list[float],
+                       direction: str = DIRECTION_LOWER_IS_BETTER) -> float:
+    """Median speedup across paired runs. speedup > 1.0 always means the 'after'
+    configuration is better on the given metric `direction`:
+      - lower-is-better     (e.g. ms/token latency): speedup = control/treatment
+      - higher-is-better    (e.g. tokens/sec, accuracy): speedup = treatment/control
+    """
     if not controls or not treatments:
         return float("nan")
-    ratios = [c / t for c, t in zip(controls, treatments)]
+    if direction == DIRECTION_HIGHER_IS_BETTER:
+        ratios = [t / c for c, t in zip(controls, treatments)]
+    else:
+        ratios = [c / t for c, t in zip(controls, treatments)]
     return float(statistics.median(ratios))
 
 
@@ -62,12 +75,22 @@ def _t_score(n: int) -> float:
     return table.get(n, 1.96)
 
 
+def _speedup_ratios(controls: list[float], treatments: list[float],
+                    direction: str) -> list[float]:
+    n = min(len(controls), len(treatments))
+    if direction == DIRECTION_HIGHER_IS_BETTER:
+        return [t / c for c, t in zip(controls[:n], treatments[:n])]
+    return [c / t for c, t in zip(controls[:n], treatments[:n])]
+
+
 def speedup_ci(controls: list[float], treatments: list[float],
+               direction: str = DIRECTION_LOWER_IS_BETTER,
                alpha: float = 0.05) -> tuple[float, float]:
     """95% CI on the true speedup, via the distribution of per-run speedup
-    ratios (LOWER-is-better samples; speedup_i = controls[i]/treatments[i], so
-    speedup > 1.0 = after is faster). Safe to use when the paired samples share
-    the same noisy machine conditions.
+    ratios. speedup > 1.0 always means 'after' is BETTER on the metric:
+      - lower-is-better  -> speedup_i = controls[i]/treatments[i]
+      - higher-is-better -> speedup_i = treatments[i]/controls[i]
+    Safe to use when the paired samples share the same noisy machine conditions.
 
     Returns (lo, hi) for the true speedup. A CI straddling 1.0 means the apparent
     win is not reliably distinguishable from noise.
@@ -75,7 +98,7 @@ def speedup_ci(controls: list[float], treatments: list[float],
     n = min(len(controls), len(treatments))
     if n == 0:
         return (float("nan"), float("nan"))
-    ratios = [c / t for c, t in zip(controls[:n], treatments[:n])]
+    ratios = _speedup_ratios(controls, treatments, direction)
     mean_r = statistics.fmean(ratios)
     if n == 1:
         return (mean_r, mean_r)
@@ -94,23 +117,28 @@ def classify_speedup(lo: float, hi: float, real_floor: float = 1.15,
     if lo >= real_floor:
         return "REAL", (
             f"speedup CI [{lo:.2f}x, {hi:.2f}x] clears {real_floor}x even at its "
-            f"low end -> reliably faster (assuming a relevant metric)."
+            f"low end -> reliably {_better_than_phrase(real_floor)} (assuming a "
+            "relevant metric)."
         )
     if hi < 1.0:
         return "FALSE", (
             f"speedup CI [{lo:.2f}x, {hi:.2f}x] is strictly below 1.0x -> the "
-            f"configuration is reliably slower, not faster."
+            f"configuration is reliably worse, not better."
         )
     if hi >= marginal_floor:
         return "MARGINAL", (
             f"speedup CI [{lo:.2f}x, {hi:.2f}x] straddles 1.0x and includes "
-            f">{marginal_floor}x -> appears faster but within single-run noise; "
+            f">{marginal_floor}x -> appears better but within single-run noise; "
             f"NOT a reliable win. Re-measure with more repeats."
         )
     return "FALSE", (
         f"speedup CI [{lo:.2f}x, {hi:.2f}x] never clears {marginal_floor}x and "
         f"straddles 1.0x -> no reliable win. Re-measure or abandon."
     )
+
+
+def _better_than_phrase(x: float) -> str:
+    return f"{x}x better"
 
 
 # --- robust vs brittle quality metrics ----------------------------------------
@@ -281,3 +309,302 @@ def summarize_trust(v: TrustVerdict) -> str:
         + (f"  unread:    {', '.join(v.unread_keys)}\n" if v.unread_keys else "")
         + f"  reason:    {v.reason}"
     )
+
+
+# --- audit ANY benchmark output: file input + methodology gaps -----------------
+#
+# The research hole: whoever runs a benchmark, they publish ONE number, and nobody
+# has a tool that tells them whether that number is within noise or whether the
+# claim even declared enough methodology. `audit_benchmark_data` is the universal
+# auditor: give it before/after samples for ANY metric (latency ms/token, tokens/se,
+# accuracy, ...) with its direction, and it returns a verdict. `audit_benchmark_file`
+# does the same for a JSON/CSV file from any benchmark tool (vLLM, Ollama, HF
+# inference-benchmarker, ...), plus a methodology-gap report.
+
+VERDICT_RESOLVED = "RESOLVED"
+VERDICT_UNRESOLVED = "UNRESOLVED"
+VERDICT_INSUFFICIENT = "INSUFFICIENT_RUNS"
+# Short aliases so the verdict strings are ergonomic in one place.
+RESOLVED, UNRESOLVED, INSUFFICIENT_RUNS = VERDICT_RESOLVED, VERDICT_UNRESOLVED, VERDICT_INSUFFICIENT
+
+
+@dataclass
+class BenchmarkAudit:
+    verdict: str            # RESOLVED / UNRESOLVED / INSUFFICIENT_RUNS
+    reason: str
+    speed_verdict: str      # REAL / MARGINAL / FALSE (or "" if no valid pair)
+    lo: float
+    hi: float
+    n: int
+    methodology_gaps: list[str]
+    warning: str | None
+
+
+METHODOLOGY_REQUIRED = (
+    ("n_runs", "how many repeats (n) to see if the number is within noise"),
+    ("metric", "the metric being compared (tok/s, ms/token, latency, ...)"),
+    ("input_len", "the input/prompt length the number was measured at"),
+    ("output_len", "the output length / decode length the number was measured at"),
+    ("cache_state", "warm vs cold cache (a 3-5x p95 gap can hide here)"),
+    ("load_concurrency", "single-stream vs concurrent (batch vs single never compare)"),
+)
+
+
+def _parse_number(value) -> float | None:
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        s = str(value).strip().strip('"\'')
+    except Exception:
+        return None
+    if s in ("", "nan", "NaN", "None", "-"):
+        return None
+    mult = 1.0
+    ulow = s.lower()
+    for suffix, factor in (("ms", 1.0), ("gb/s", 1e9), ("mb/s", 1e6), ("kb/s", 1e3)):
+        if ulow.endswith(suffix):
+            mult = factor
+            s = s[: -len(suffix)].strip()
+            break
+    try:
+        return float(s) * mult
+    except ValueError:
+        return None
+
+
+def _parse_rows_to_records(data) -> tuple[list[dict], str | None]:
+    """Normalize arbitrary benchmark output into list-of-dict rows, or return
+    (None, error) if we cannot understand the shape."""
+    if isinstance(data, dict):
+        # Common shapes:
+        #   {"results": [ ... ]}  /  {"benchmarks": [...]} / list-valued keys
+        for key in ("results", "benchmarks", "rows", "data", "samples", "runs"):
+            val = data.get(key)
+            if isinstance(val, list) and val and isinstance(val[0], dict):
+                return val, None
+            if isinstance(val, list) and val and isinstance(val[0], (int, float)):
+                return [{"value": v} for v in val], None
+        # A flat dict of scalar fields (e.g. a single summary record).
+        scalars = {k: v for k, v in data.items()
+                   if isinstance(v, (int, float, str)) and _parse_number(v) is not None}
+        if scalars:
+            return [{"record": k, "value": v} for k, v in data.items()
+                    if _parse_number(v) is not None], None
+    if isinstance(data, list):
+        return data, None
+    return None, "could not interpret benchmark data shape"
+
+
+def load_benchmark_file(path: str) -> list[dict]:
+    """Load a benchmark JSON or CSV file into list-of-dict rows."""
+    ext = os.path.splitext(path)[1].lower()
+    with open(path, newline="") as f:
+        if ext == ".csv":
+            return [{k.strip(): v.strip() for k, v in row.items() if k.strip()}
+                    for row in csv.DictReader(f)]
+        if ext in (".json", ".jsonl"):
+            text = f.read()
+            if ext == ".jsonl":
+                return [json.loads(line) for line in text.splitlines() if line.strip()]
+            data = json.loads(text)
+            rows, err = _parse_rows_to_records(data)
+            if err:
+                raise ValueError(f"{os.path.basename(path)}: {err}")
+            return rows
+        raise ValueError(f"unsupported file type: {ext} (use .json/.jsonl/.csv)")
+
+
+def _extract_metric_column(rows: list[dict], metric_hint: str | None,
+                           direction: str) -> tuple[list[float] | None, str | None]:
+    """Find a numeric series to audit. Prefers the named `metric_hint`; otherwise
+    picks the most 'timing/speed'-like numeric column. Direction must be given by
+    the caller; we only auto-guess the COLUMN, never the direction (honesty rule)."""
+    if not rows:
+        return None, "no rows to audit"
+    # 1. Explicit hint.
+    if metric_hint:
+        for row in rows:
+            if metric_hint in row:
+                vals = [_parse_number(row[metric_hint]) for row in rows]
+                num = [v for v in vals if v is not None]
+                if num:
+                    return num, metric_hint
+        return None, f"metric column '{metric_hint}' not found in data"
+    # 2. Auto-guess a column by keyword, preferring latency/speed names.
+    preferred = ("ms/token", "ms_per_token", "ms_per_tok", "tokens/sec", "tok/s",
+                 "tokens_per_second", "latency_ms", "ttft_ms", "latency", "throughput",
+                 "value", "tokens_per_sec")
+    keys = list(rows[0].keys())
+    for key in keys:
+        if any(p in key.lower() for p in preferred) and any(
+                _parse_number(r[key]) is not None for r in rows):
+            return [_parse_number(r[key]) for r in rows], key
+    # 3. First all-numeric column.
+    for key in keys:
+        if all(_parse_number(r[key]) is not None for r in rows):
+            return [_parse_number(r[key]) for r in rows], key
+    return None, "no numeric metric column found (use --metric-name to name it)"
+
+
+def _methodology_gaps(rows: list[dict], declared: dict | None) -> list[str]:
+    """Check which of the checkbox fields a trustworthy claim must declare are
+    present (either in the source rows or the caller's `declared` map). Missing
+    ones are reportable gaps, not automatically fatal -- but they limit how far a
+    number can be trusted across workloads."""
+    present: set[str] = set()
+    for row in rows:
+        for key in row.keys():
+            k = key.strip().lower().replace(" ", "_").replace("-", "_")
+            for field, _ in METHODOLOGY_REQUIRED:
+                if field == k or field in k or k in field:
+                    present.add(field)
+    for key, value in (declared or {}).items():
+        k = key.strip().lower().replace(" ", "_").replace("-", "_")
+        for field, _ in METHODOLOGY_REQUIRED:
+            if (field == k or field in k or k in field) and value not in (None, "", False):
+                present.add(field)
+    gaps = []
+    for field, desc in METHODOLOGY_REQUIRED:
+        if field not in present:
+            gaps.append(f"{field}: {desc}")
+    return gaps
+
+
+def audit_data(values: list[float], direction: str = DIRECTION_LOWER_IS_BETTER,
+               real_floor: float = 1.15, marginal_floor: float = 1.05,
+               ) -> tuple[str, str, float | None, float | None, int]:
+    """Audit a SINGLE metric series by splitting into first-half (control) and
+    second-half (treatment) of the repeated runs. Returns (speed_verdict, reason,
+    lo, hi, n_samples_per_side). For a true before/after pair use `audit` directly;
+    this is the fallback for data that is one series of repeats."""
+    n = len(values)
+    if n < 2:
+        return ("FALSE", f"n={n}: cannot audit a single-run number (needs repeats).",
+                None, None, n)
+    half = n // 2
+    controls = values[:half]
+    treatments = values[half:] if n % 2 == 0 else values[half:]
+    lo, hi = speedup_ci(controls, treatments, direction)
+    speed_v, speed_r = classify_speedup(lo, hi, real_floor, marginal_floor)
+    return speed_v, speed_r, lo, hi, min(len(controls), len(treatments))
+
+
+def _final_verdict(speed_verdict: str, methodology_gaps: list[str], n: int) -> tuple[str, str]:
+    missing_noise = not methodology_gaps or not any(g.startswith("n_runs") for g in methodology_gaps)
+    if n < 3:
+        return VERDICT_INSUFFICIENT, (
+            f"only n={n} runs per side: too few to separate a real win from noise "
+            "(need >=3, ideally >=5). Re-measure."
+        )
+    if speed_verdict == "REAL":
+        if missing_noise:
+            return VERDICT_RESOLVED, "clean, repeated measurement outside the noise band."
+        return VERDICT_RESOLVED, "speedup is outside the noise band (REAL)."
+    if speed_verdict == "MARGINAL":
+        return VERDICT_UNRESOLVED, "appears better but is within the single-run noise band; re-measure."
+    return VERDICT_UNRESOLVED, "no reliable win in this data."
+
+
+def audit_benchmark_data(controls: list[float], treatments: list[float],
+                         direction: str = DIRECTION_LOWER_IS_BETTER,
+                         declared: dict | None = None,
+                         real_floor: float = 1.15,
+                         marginal_floor: float = 1.05) -> BenchmarkAudit:
+    """Audit a before/after benchmark on ANY metric, with its direction, and
+    return a RESOLVED / UNRESOLVED / INSUFFICIENT_RUNS verdict plus methodology
+    gaps. `declared` lets the caller state methodology fields (n_runs, metric,
+    input_len, output_len, cache_state, load_concurrency) that the benchmark
+    report declared."""
+    lo, hi = speedup_ci(controls, treatments, direction)
+    speed_v, speed_r = classify_speedup(lo, hi, real_floor, marginal_floor)
+    n = min(len(controls), len(treatments))
+    declared_meta = dict(declared or {})
+    if "n_runs" not in declared_meta:
+        declared_meta["n_runs"] = n
+    gaps = _methodology_gaps([], declared_meta)
+    verdict, reason = _final_verdict(speed_v, gaps, n)
+    warning = None
+    if speed_v in ("REAL", "MARGINAL") and any(
+            g.startswith(("input_len", "output_len", "cache_state", "load_concurrency"))
+            for g in gaps):
+        warning = "the win may not transfer to a different workload (missing methodology); scope it to the reported length/cache/concurrency."
+    return BenchmarkAudit(verdict, reason, speed_v, lo, hi, n, gaps, warning)
+
+
+def audit_benchmark_file(path: str, metric_name: str | None = None,
+                         direction: str = DIRECTION_LOWER_IS_BETTER,
+                         declared: dict | None = None,
+                         single_series: bool = False,
+                         real_floor: float = 1.15,
+                         marginal_floor: float = 1.05) -> BenchmarkAudit:
+    """Audit any benchmark JSON/CSV file. Without a control/treatment split in the
+    data, it audits the named (or auto-guessed) metric series by first-half vs
+    second-half of the repeats (`single_series=True` is the default fallback).
+    If the file has before/after columns (control_*/after_*), pass their names via
+    `metric_name` as 'control_col,after_col' and `single_series=False`."""
+    rows = load_benchmark_file(path)
+    if not rows:
+        return BenchmarkAudit(VERDICT_UNRESOLVED, "benchmark file is empty.",
+                              "FALSE", float("nan"), float("nan"), 0, [], None)
+
+    declared_meta = dict(declared or {})
+    if metric_name and "," in metric_name:
+        control_col, after_col = (c.strip() for c in metric_name.split(",", 1))
+        controls = [_parse_number(r[control_col]) for r in rows]
+        after = [_parse_number(r[after_col]) for r in rows]
+        controls = [c for c in controls if c is not None]
+        after = [a for a in after if a is not None]
+        if "n_runs" not in declared_meta:
+            declared_meta["n_runs"] = min(len(controls), len(after))
+        gaps = _methodology_gaps(rows, declared_meta)
+        lo, hi = speedup_ci(controls, after, direction)
+        speed_v, speed_r = classify_speedup(lo, hi, real_floor, marginal_floor)
+        n = min(len(controls), len(after))
+        verdict, reason = _final_verdict(speed_v, gaps, n)
+        warning = None
+        if speed_v in ("REAL", "MARGINAL") and any(
+                g.startswith(("input_len", "output_len", "cache_state", "load_concurrency"))
+                for g in gaps):
+            warning = "the win may not transfer to a different workload; scope it to the reported length/cache/concurrency."
+        return BenchmarkAudit(verdict, reason, speed_v, lo, hi, n, gaps, warning)
+
+    # Single-series mode: auto-guess the numeric column and split into halves.
+    values, used_col = _extract_metric_column(rows, metric_name, direction)
+    if values is None:
+        return BenchmarkAudit(VERDICT_UNRESOLVED, f"{used_col} (in {os.path.basename(path)}).",
+                              "FALSE", float("nan"), float("nan"), 0,
+                              _methodology_gaps(rows, declared_meta), None)
+    n = len(values)
+    if "n_runs" not in declared_meta:
+        declared_meta["n_runs"] = n
+    gaps = _methodology_gaps(rows, declared_meta)
+    half = n // 2
+    controls = values[:half]
+    treatments = values[half:] if n % 2 == 0 else values[half:]
+    lo, hi = speedup_ci(controls, treatments, direction)
+    speed_v, speed_r = classify_speedup(lo, hi, real_floor, marginal_floor)
+    per_side = min(len(controls), len(treatments))
+    verdict, reason = _final_verdict(speed_v, gaps, per_side)
+    warning = None
+    if speed_v in ("REAL", "MARGINAL") and any(
+            g.startswith(("input_len", "output_len", "cache_state", "load_concurrency"))
+            for g in gaps):
+        warning = "the win may not transfer to a different workload; scope it to the reported length/cache/concurrency."
+    return BenchmarkAudit(verdict, reason, speed_v, lo, hi, per_side, gaps, warning)
+
+
+def summarize_audit(a: BenchmarkAudit, metric_label: str = "") -> str:
+    lines = [f"AUDIT VERDICT: {a.verdict}"]
+    if metric_label:
+        lines[0] += f"  (metric: {metric_label})"
+    lines.append(f"  speed:    {a.speed_verdict}"
+                 + (f"  CI [{a.lo:.2f}x, {a.hi:.2f}x], n={a.n} per side" if a.lo == a.lo else ""))
+    lines.append(f"  reason:   {a.reason}")
+    if a.methodology_gaps:
+        lines.append("  methodology gaps (the claim did not declare):")
+        lines += [f"     - {g}" for g in a.methodology_gaps]
+    else:
+        lines.append("  methodology: all required fields declared.")
+    if a.warning:
+        lines.append(f"  warning:  {a.warning}")
+    return "\n".join(lines)

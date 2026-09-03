@@ -299,3 +299,38 @@ big-ish model *and* uncovered a gap the small-model tuning had missed.
 (`gpucheck(stats-only)` / `trustcheck(user-samples)`) and name the file by
 that, instead of claiming the `--model` default was profiled. This stops a
 parameterized decision from polluting the measured `benchmarks/` ledger.
+
+## Benchmark auditor (v0.2.0): audit ANY benchmark output for noise + methodology
+
+Added `inferlast audit`: the first tool for auditing ANY inference benchmark
+(JSON/JSONL/CSV) and answering the question every big-company press release
+avoids: *"is that 3x speedup real, or within the noise band?"*
+
+What it does:
+- Accepts ANY metric with an explicit direction (`--higher-is-better` for
+  throughput/accuracy; latency by default), not just the repo's own before/after.
+- Without a control/treatment split in the data, it splits the series into
+  first-half (baseline) vs second-half (after) of the repeats, per standard
+  before/after methodology.
+- Produces a **RESOLVED / UNRESOLVED / INSUFFICIENT_RUNS** verdict with a 95%
+  CI on the true speedup and a reason.
+- Produces a **methodology-gap report**: flags what the benchmark did NOT declare
+  (input length, cache state, single-stream vs concurrent, n) -- the empty gap
+  the research identified (inference performance is measured everywhere but
+  audited nowhere).
+- Warns when a win may not transfer across workload scope (different prompt
+  length, cache state, concurrency).
+
+Usage:
+```
+inferlast audit vllm_benchmark.json --metric-name latency_ms
+inferlast audit throughput.csv --metric-name tok_s --higher-is-better
+inferlast audit benchmark.json --declare input_len=2048 --declare cache_state=cold
+```
+
+`trustcheck.py` now supports arbitrary metric direction (lower-is-better /
+higher-is-better) in all stats functions (`speedup_ci`, `classify_speedup`,
+`audit_data`); the existing codebase behavior is unchanged (default is still
+lower-is-better latency). 20 new tests across `test_benchmark_audit.py` and
+`test_trustcheck.py`; 72 total tests. Version bumped to 0.2.0. Audit subcommand
+wired into the installed CLI alongside `run`.
