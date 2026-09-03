@@ -19,6 +19,7 @@ import torch
 from profiler import profile_forward, profile_decode
 from quantize import auto_quantize
 from batcher import bench_batch, best_batch
+from decode import measure_decode
 
 
 def _overhead_frac(pr) -> float:
@@ -60,14 +61,33 @@ def run_auto_optimizer(
         "overhead_fraction": round(_overhead_frac(pr_pre), 3),
     }
 
-    # decode
+    # decode -- measured on the REAL KV-cache path (a served user sees this)
     pr_dec = profile_decode(model, ids, n_new_tokens=n_new,
                             run_repeats=1, warmup=1)
     out["decode"] = {
         "ms_per_token": pr_dec.total_time / n_new * 1000.0,
         "tok_per_s": n_new / max(pr_dec.total_time, 1e-9),
         "overhead_fraction": round(_overhead_frac(pr_dec), 3),
+        "kv_cache": True,
     }
+
+    # KV-cache technique measurement: the real decode path vs O(n^2) recompute.
+    # This is the single biggest CPU decode lever and is NOT emphasised enough
+    # elsewhere -- the naive path under-reports decode speed by 1.5-3x.
+    out["techniques"] = {}
+    try:
+        mpt_kv, tps_kv = measure_decode(model, ids, n_new, use_cache=True, repeats=2, warmup=1)
+        mpt_nc, tps_nc = measure_decode(model, ids, n_new, use_cache=False, repeats=2, warmup=1)
+        out["techniques"]["kv_cache"] = {
+            "avail": True,
+            "kv_cache_ms_per_token": round(mpt_kv, 1),
+            "no_cache_ms_per_token": round(mpt_nc, 1),
+            "kv_speedup_x": round(mpt_nc / max(mpt_kv, 1e-9), 2),
+            "note": "uses past_key_values so each decode step reuses cached "
+                    "keys/values instead of re-forwarding the whole prefix.",
+        }
+    except Exception as exc:  # e.g. a model without a compatible cache API
+        out["techniques"]["kv_cache"] = {"avail": False, "error": str(exc)}
 
     # quantization
     qv = auto_quantize(model, tok, prompt=prompt, n_new=n_new,
@@ -110,6 +130,7 @@ def _report(o: dict) -> str:
     d = o["decode"]
     q = o["quantization"]
     b = o["batching"]
+    t = o.get("techniques", {})
     overhead_note = (
         f"{p['overhead_fraction']*100:.0f}% of prefill wall time and "
         f"{d['overhead_fraction']*100:.0f}% of decode wall time is framework "
@@ -134,6 +155,22 @@ def _report(o: dict) -> str:
         f"{d['ms_per_token']:.0f} ms/token (~{d['tok_per_s']:.2f} tok/s). "
         "Single-token serial, latency-sensitive.",
         "",
+        "## 2b. Optimization techniques measured (KV cache)",
+    ]
+    kv = t.get("kv_cache", {})
+    if kv.get("avail"):
+        lines += [
+            f"KV cache is ON in the decode measurement. "
+            f"KV-cache {kv['kv_cache_ms_per_token']} ms/token vs "
+            f"no-cache(recompute) {kv['no_cache_ms_per_token']} ms/token "
+            f"= {kv['kv_speedup_x']}x faster. {kv.get('note','')}",
+            "The O(n^2) recompute loop is what most ad-hoc CPU decoders use; "
+            "enabling the KV cache is the largest single CPU decode win.",
+        ]
+    else:
+        lines.append("KV cache not measurable on this model: "
+                     f"{kv.get('error','?')}")
+    lines += [
         "## 3. Quantization (fp32 vs int8, measured BEFORE/AFTER, averaged)",
         f"fp32 {q['fp32_ms_per_token']:.0f} ms/tok -> int8 {q['int8_ms_per_token']:.0f} ms/tok "
         f"= {q['speedup_int8_over_fp32']:.2f}x (worst repeat {q['speedup_worst_repeat']:.2f}x), "

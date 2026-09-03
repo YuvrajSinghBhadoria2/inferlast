@@ -23,6 +23,8 @@ from dataclasses import dataclass, field
 
 import torch
 import torch.nn as nn
+from transformers import DynamicCache
+from decode import kv_supported
 
 
 @dataclass
@@ -194,15 +196,18 @@ def profile_decode(
     cat_calls: dict[str, int] = defaultdict(int)
 
     with torch.no_grad(), torch.inference_mode():
+        use_kv = kv_supported(model)
         # one warmup decode sweep
-        _decode_sweep(model, ids.clone(), n_new_tokens, do_sample, warmup_wall_only=True)
+        _decode_sweep(model, ids.clone(), n_new_tokens, do_sample,
+                      warmup_wall_only=True, use_cache=use_kv)
         for _ in range(run_repeats):
             cur = ids.clone()
             # do a prefill (untimed) then measure the decode loop
             model(cur)
             span_ref.clear()
             t0 = time.perf_counter()
-            _decode_loop(model, cur, n_new_tokens, do_sample, span_ref, cat_times, cat_calls, category)
+            _decode_loop(model, cur, n_new_tokens, do_sample, span_ref,
+                         cat_times, cat_calls, category, use_cache=use_kv)
             t1 = time.perf_counter()
             total_wall += t1 - t0
 
@@ -235,31 +240,83 @@ def _exit_hook(span_ref):
     return _x
 
 
-def _decode_loop(model, ids, n_new, sample, span_ref, cat_times, cat_calls, category):
+def _decode_loop(model, ids, n_new, sample, span_ref, cat_times, cat_calls, category,
+                 use_cache=True, prefilled_cache=None):
+    """Decode loop that measures per-category leaf timing via hooks.
+
+    When `use_cache` is True, it uses the KV cache across steps (the REAL decode
+    path as a served user sees it) instead of re-forwarding the whole growing
+    context each token (the O(n^2) path that understates CPU decode speed by
+    1.5-3x). This mirrors `decode.decode_with_kv`: the prefix is forward passed
+    on step 0 into an empty cache (the prefill) and the cache is grown across
+    steps, so keep `ids` as the full prefix for the first call.
+    """
     n_tokens = ids.shape[1]
+    if use_cache:
+        am = torch.ones_like(ids, dtype=torch.long)
+        cache = DynamicCache()
+        cur = ids
+        pos = torch.arange(n_tokens, device=ids.device).unsqueeze(0)
+        am_cur = am
+        for step in range(n_new):
+            span_ref.clear()
+            out = model(cur, attention_mask=am_cur, past_key_values=cache,
+                        use_cache=True, position_ids=pos)
+            if step > 0:
+                # step 0 is the prefill; count only true decode steps toward the
+                # per-category decode timing, so ms/token excludes the one-time cost
+                _accumulate_step(span_ref, cat_times, cat_calls, category)
+            next_id = out.logits[:, -1, :].argmax(-1)
+            cur = next_id.unsqueeze(0)
+            pos = pos[:, -1:] + 1
+            am_cur = torch.cat([am_cur, torch.ones_like(cur, dtype=am_cur.dtype)], dim=1)
+        return
     for step in range(n_new):
         span_ref.clear()
         out = model(ids)
-        span_ref_item = dict(span_ref)
-        # accumulate category times from this step
-        step_acc: dict[str, float] = defaultdict(float)
-        step_calls: dict[str, int] = defaultdict(int)
-        for mid, v in span_ref_item.items():
-            cat, leaf = category.get(mid, ("other", False))
-            if leaf:
-                step_acc[cat] += v
-                step_calls[cat] += 1
-        for c, v in step_acc.items():
-            cat_times[c] += v
-            cat_calls[c] += step_calls[c]
-        next_id = out.logits[:, -1, :].argmax(-1)
+        _accumulate_step(span_ref, cat_times, cat_calls, category)
+        if not sample:
+            next_id = out.logits[:, -1, :].argmax(-1)
+        else:
+            probs = torch.softmax(out.logits[:, -1, :], dim=-1)
+            next_id = torch.multinomial(probs, 1)
         ids = torch.cat([ids, next_id.unsqueeze(0)], dim=1)
 
 
-def _decode_sweep(model, ids, n_new, sample, warmup_wall_only=False):
+def _accumulate_step(span_ref, cat_times, cat_calls, category):
+    span_ref_item = dict(span_ref)
+    step_acc: dict[str, float] = defaultdict(float)
+    step_calls: dict[str, int] = defaultdict(int)
+    for mid, v in span_ref_item.items():
+        cat, leaf = category.get(mid, ("other", False))
+        if leaf:
+            step_acc[cat] += v
+            step_calls[cat] += 1
+    for c, v in step_acc.items():
+        cat_times[c] += v
+        cat_calls[c] += step_calls[c]
+
+
+def _decode_sweep(model, ids, n_new, sample, warmup_wall_only=False,
+                  use_cache=True):
+    if use_cache:
+        cache = DynamicCache()
+        am = torch.ones_like(ids)
+        pos = torch.arange(ids.shape[1], device=ids.device).unsqueeze(0)
+        cur, am_cur = ids, am
+        for step in range(n_new):
+            out = model(cur, attention_mask=am_cur, past_key_values=cache,
+                        use_cache=True, position_ids=pos)
+            next_id = out.logits[:, -1, :].argmax(-1) if not sample else \
+                torch.multinomial(torch.softmax(out.logits[:, -1, :], dim=-1), 1)
+            cur = next_id.unsqueeze(0)
+            pos = pos[:, -1:] + 1
+            am_cur = torch.cat([am_cur, torch.ones_like(cur, dtype=am_cur.dtype)], dim=1)
+        return
     for step in range(n_new):
         out = model(ids)
-        next_id = out.logits[:, -1, :].argmax(-1)
+        next_id = out.logits[:, -1, :].argmax(-1) if not sample else \
+            torch.multinomial(torch.softmax(out.logits[:, -1, :], dim=-1), 1)
         ids = torch.cat([ids, next_id.unsqueeze(0)], dim=1)
 
 

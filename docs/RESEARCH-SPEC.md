@@ -135,4 +135,24 @@ record the negative result honestly rather than stretch the claim.
   (`tests/test_benchmark_audit.py`); 72 total. Evidence: `tests/`,
   `src/trustcheck.py`, `src/cli.py`, this entry. Version bumped to 0.2.0.
 
+- **2026-09-03 — KV cache is now the real measured decode path; full technique
+  catalog.** Fixed a systematic under-report in the tool itself: every decode
+  measurement used the O(n^2) no-KV-cache recompute loop, which under-states true
+  CPU decode speed by 1.5-3x. Now `src/decode.py` uses `DynamicCache` + explicit
+  `position_ids` (modern HF API), and `profile_decode`, `_collect_logits`, and
+  `run_auto_optimizer` all measure on the KV-cache path (with `use_cache=False`
+  fallback + `kv_supported()` auto-detection for non-HF models). `[MEASURED]` on
+  Qwen2.5-0.5B, this i7-9750H: **KV 225.5 ms/tok vs no-cache 447.1 ms/tok =
+  1.98x**; in `run_auto_optimizer` **1.66x**. Correctness gate passed
+  (KV == recompute bit-identical; matches HF `generate()` when `position_ids` are
+  maintained — Qwen models diverge without it). New `docs/OPTIMIZATION-TECHNIQUES.md`
+  maps every technique (KV cache, batch sweep, int8 quant, GGUF Q4, speculative
+  decode, KV-quant, AQT/int4, FlashAttention, engine choice) to an honest gate —
+  SHIPPED / EXTERNAL(engine-bound) / DEFERRED-EXPLAINED. **AQT int4 is
+  deferred-and-explained** (needs torch>=2.3 + torchao, CUDA/GPU — not portable to
+  torch 2.2.2 CPU, verified earlier), never faked. 6 new tests
+  (`tests/test_decode.py`) + schema guard; 78 total. Evidence: `src/decode.py`,
+  `src/profiler.py`, `src/quantize.py`, `src/auto_optimizer.py`,
+  `docs/OPTIMIZATION-TECHNIQUES.md`, `tests/test_decode.py`.
+
 Every claim added here must link to a file under `benchmarks/` and a passing test.

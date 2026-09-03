@@ -33,6 +33,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.ao.quantization import quantize_dynamic
+from transformers import DynamicCache
+from decode import kv_supported
 
 
 @dataclass
@@ -47,22 +49,37 @@ class QuantVerdict:
     reason: str
 
 
-def _collect_logits(model, tok, prompt, n_new):
-    """Return (ms_per_token, per-step fp32 logits at last position, generated ids)."""
+def _collect_logits(model, tok, prompt, n_new, use_cache=None):
+    """Return (ms_per_token, per-step fp32 logits at last position, generated ids).
+
+    Uses the KV-cache decode path (the real served path) by default so measured
+    decode speed is not artificially slow; `use_cache=False` falls back to the
+    O(n^2) recompute loop for A/B comparison. If `use_cache` is left None it is
+    auto-detected from whether the model's forward accepts KV-cache kwargs."""
+    if use_cache is None:
+        use_cache = kv_supported(model)
     ids = tok([prompt], return_tensors="pt").input_ids
+    am = torch.ones_like(ids, dtype=torch.long)
     model.eval()
-    t0 = time.perf_counter()
-    cur = ids.clone()
+    cur, am_cur, pos = ids, am, torch.arange(ids.shape[1]).unsqueeze(0)
+    cache = DynamicCache() if use_cache else None
     logits_last = []
+    t0 = time.perf_counter()
     with torch.no_grad(), torch.inference_mode():
         for _ in range(n_new):
-            out = model(cur)
-            # logits at the last position -> [1, vocab]
+            if use_cache:
+                out = model(cur, attention_mask=am_cur, past_key_values=cache,
+                            use_cache=True, position_ids=pos)
+            else:
+                out = model(cur) if not kv_supported(model) else model(cur, attention_mask=am_cur)
             logits_last.append(out.logits[:, -1, :].float().detach())
             nxt = out.logits[:, -1, :].argmax(-1)
-            cur = torch.cat([cur, nxt.unsqueeze(0)], dim=1)
+            cur = nxt.unsqueeze(0) if use_cache else torch.cat([cur, nxt.unsqueeze(0)], dim=1)
+            if use_cache:
+                pos = pos[:, -1:] + 1
+            am_cur = torch.cat([am_cur, torch.ones_like(cur, dtype=am_cur.dtype)], dim=1)
         dt = time.perf_counter() - t0
-    gen = cur[:, ids.shape[1]:]
+    gen = cur[:, ids.shape[1]:] if not use_cache else cur.clone()
     return _ms_per_token(dt, n_new), torch.cat(logits_last, dim=0), gen
 
 

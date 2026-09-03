@@ -40,3 +40,7 @@ def test_report_uses_new_metrics_and_bans_stale_field():
     # all persisted sections present
     for section in ("prefill", "decode", "quantization", "batching", "elapsed_s"):
         assert section in out
+    # the KV-cache technique slot always exists and reports availability
+    assert "techniques" in out
+    assert "kv_cache" in out["techniques"]
+    assert out["techniques"]["kv_cache"]["avail"] is False  # MiniLM has no cache API

@@ -334,3 +334,34 @@ higher-is-better) in all stats functions (`speedup_ci`, `classify_speedup`,
 lower-is-better latency). 20 new tests across `test_benchmark_audit.py` and
 `test_trustcheck.py`; 72 total tests. Version bumped to 0.2.0. Audit subcommand
 wired into the installed CLI alongside `run`.
+
+## Milestone 6 (DONE): KV-cache decode is now the real decode path
+
+Decode is measured on the **KV-cache path** (what a served user actually runs),
+not the O(n^2) recompute loop that under-reports CPU decode speed by 1.5-3x.
+
+What changed:
+- New `src/decode.py`: `DynamicCache` + explicit `position_ids` greedy decode
+  (`generate_with_kv`, `measure_decode`), with a `use_cache=False` recompute
+  fallback for A/B, and `kv_supported()` auto-detection so non-HF/custom models
+  (test fixtures) fall back without crash.
+- `src/profiler.py` `profile_decode` uses KV cache when supported (step-0 prefill
+  excluded from per-category decode timing).
+- `src/quantize.py` `_collect_logits` uses KV cache by default (auto-detected).
+- `src/auto_optimizer.py` now measures and reports a `techniques.kv_cache` slot and
+  a "2b. Optimization techniques measured (KV cache)" report section.
+
+Measured, not claimed (`[MEASURED]`, this i7-9750H, Qwen2.5-0.5B fp32):
+- KV 225.5 ms/tok (4.43 tok/s) vs no-cache 447.1 ms/tok (2.24 tok/s) → **1.98x**.
+- Full `run_auto_optimizer`: **1.66x** (259.6 vs 430.9 ms/tok).
+- **Correctness gate:** KV-cache output == recompute output bit-identical, and
+  matches HF `generate()` when `position_ids` are maintained (verified; Qwen models
+  diverge without it).
+
+New `docs/OPTIMIZATION-TECHNIQUES.md` maps every technique (KV cache, batch sweep,
+int8 quant, GGUF Q4, speculative decode, KV-quant, AQT/int4, FlashAttention, engine
+choice) to an honest gate: SHIPPED / EXTERNAL (engine-bound) / DEFERRED-EXPLAINED.
+AQT int4 is explicitly deferred-and-explained (needs torch>=2.3 + torchao, GPU);
+GGUF / speculative / KV-quant are engine-bound; FlashAttention is CUDA-only.
+
+6 new tests (`tests/test_decode.py`) + a schema assertion; **78 total tests passing**.
